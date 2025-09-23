@@ -45,6 +45,9 @@ For NumPy-accelerated version:
 python numpy-main.py
 ```
 
+> [!NOTE]
+> Image files will be generated in the `output` directory.
+
 ## Requirements
 
 All dependencies are listed in `requirements.txt`.
