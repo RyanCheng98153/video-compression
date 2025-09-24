@@ -1,3 +1,9 @@
+# Project-specific ignores
+hw1/output/
+
+# Don't ignore gitkeep files
+!hw1/output/.gitkeep
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
