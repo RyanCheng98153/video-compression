@@ -6,7 +6,8 @@
 
 ## Objective
 
-This assignment aims to explore color space transformations using a given image (`lena.png`). The task includes:
+This assignment aims to explore color space transformations using a given image (`lena.png`). 
+The task includes:
 
 - Converting the image from RGB to:
   - YUV color space
@@ -22,8 +23,8 @@ All transformations are done manually using the provided formulas without using 
 
 ## Input Example: lena.png
 
-![Lena.png](./images/lena.png)
-*Input Figure: lena.png*
+- *Input Figure: lena.png*
+<img src="./images/lena.png" width="220" height="220">
 
 ## 1. RGB Components
 
@@ -31,14 +32,14 @@ All transformations are done manually using the provided formulas without using 
 
 Each color channel (R, G, B) was extracted and saved as a grayscale image.
 
-![Red Channel](./images//rgb_R.png)  
-*Figure 1: Red Channel*
+- *Figure 1: Red Channel*
+<img src="./images/rgb_R.png" width="220" height="220">
 
-![Green Channel](./images//rgb_G.png)  
-*Figure 2: Green Channel*
+- *Figure 2: Green Channel*
+<img src="./images/rgb_G.png" width="220" height="220">
 
-![Blue Channel](./images//rgb_B.png)  
-*Figure 3: Blue Channel*
+- *Figure 3: Blue Channel*
+<img src="./images/rgb_B.png" width="220" height="220">
 
 ---
 
@@ -52,14 +53,14 @@ U &= -0.169 \cdot R - 0.331 \cdot G + 0.5 \cdot B + 128 \\
 V &= 0.5 \cdot R - 0.419 \cdot G - 0.081 \cdot B + 128 \\
 \end{aligned}$
 
-![Y Channel (YUV)](./images//yuv_Y.png)  
-*Figure 4: Y Channel (YUV)*
+- *Figure 4: Y Channel (YUV)*
+<img src="./images/ycbcr_Y.png" width="220" height="220">
 
-![U Channel](./images//yuv_U.png)  
-*Figure 5: U Channel (YUV)*
+- *Figure 5: U Channel (YUV)*
+<img src="./images/yuv_U.png" width="220" height="220">
 
-![V Channel](./images//yuv_V.png)  
-*Figure 6: V Channel (YUV)*
+- *Figure 6: V Channel (YUV)*
+<img src="./images/yuv_V.png" width="220" height="220">
 
 ---
 
@@ -73,14 +74,15 @@ Y &= 0.299 \cdot R + 0.587 \cdot G + 0.114 \cdot B \\
 Cb &= -0.168736 \cdot R - 0.331264 \cdot G + 0.5 \cdot B + 128 \\
 Cr &= 0.5 \cdot R - 0.418688 \cdot G - 0.081312 \cdot B + 128 \\
 \end{aligned}$
-![Y Channel (YCbCr)](./images//ycbcr_Y.png)  
-*Figure 7: Y Channel (YCbCr)*
 
-![Cb Channel](./images//ycbcr_Cb.png)  
-*Figure 8: Cb Channel (YCbCr)*
+- *Figure 7: Y Channel (YCbCr)*
+<img src="./images/ycbcr_Y.png" width="220" height="220">
 
-![Cr Channel](./images//ycbcr_Cr.png)  
-*Figure 9: Cr Channel (YCbCr)*
+- *Figure 8: Cb Channel (YCbCr)*
+<img src="./images/ycbcr_Cb.png" width="220" height="220">
+
+- *Figure 9: Cr Channel (YCbCr)*
+<img src="./images/ycbcr_Cr.png" width="220" height="220">
 
 ---
 
@@ -90,11 +92,16 @@ The project dependencies can be managed either through a `requirements.txt` file
 
 For the implementation, I implemented with "native-python" (readable) and "NumPy" (fast) version:
 
-**main.py**: 
+**./main.py**: 
 - implemented in native Python with clear and readable logic.
 
-**numpy_main.py**: 
+**./numpy_main.py**: 
 - implemented using NumPy arrays to achieve accelerated computation.
+
+> ![NOTE]
+> YUV and YCbCr still have a little difference, 
+> can use np.abs(yuv.astype(int) - ycbcr.astype(int))
+> to check the mean and max difference between.
 
 ---
 
