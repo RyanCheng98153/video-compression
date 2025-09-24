@@ -3,6 +3,7 @@
 **Student ID:** [314554025]  
 **Name:** [鄭睿宏]  
 **Date:** 2025-09-24
+**Project Link:** https://github.com/RyanCheng98153/video-compression/tree/main/hw1
 
 ## Objective
 
