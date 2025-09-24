@@ -48,9 +48,32 @@ python numpy-main.py
 > [!NOTE]
 > Image files will be generated in the `output` directory.
 
+## File Structure
+.
+├── main.py
+├── numpy-main.py
+├── lena.png
+├── output/
+│   ├── rgb_R.png
+│   ├── rgb_G.png
+│   ├── rgb_B.png
+│   ├── yuv_Y.png
+│   ├── yuv_U.png
+│   ├── yuv_V.png
+│   ├── ycbcr_Y.png
+│   ├── ycbcr_Cb.png
+│   ├── ycbcr_Cr.png
+├── report.md
+├── README.md
+├── requirements.txt
+
+
 ## Requirements
 
 All dependencies are listed in `requirements.txt`.
+
+- numpy
+- opencv-python
 
 ## License
 
