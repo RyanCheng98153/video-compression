@@ -132,7 +132,7 @@ def main():
     # Fast DCT / IDCT Implementation (1D Accelerated)
     # ==========================
     print("\n ===== Fast DCT / IDCT Implementation (1D Accelerated) =====\n")
-    output_dir = root_outdir + '/dct_fast_1d'
+    output_dir = root_outdir + '/dct_fast_numpy_1d'
     os.makedirs(output_dir, exist_ok=True)
 
     # DCT
