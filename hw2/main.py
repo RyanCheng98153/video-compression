@@ -199,8 +199,8 @@ def main(
     # === visualize in log domain ===
     dct_log = np.log1p(np.abs(dct_img))
     dct_log = dct_log / np.max(dct_log)
-    plt.imsave(f"{output_dir}/dct_log_image.png", dct_log, cmap='gray')
-    print(f"DCT log-domain image saved to {output_dir}/dct_log_image.png\n")
+    plt.imsave(f"{output_dir}/dct_log_image_uv_{uv_size}.png", dct_log, cmap='gray')
+    print(f"DCT log-domain image saved to {output_dir}/dct_log_image_uv_{uv_size}.png\n")
 
     # IDCT
     print("Applying Basic IDCT...")
@@ -211,8 +211,8 @@ def main(
 
     # Save reconstructed image
     idct_img_clipped = np.clip(idct_img, 0, 255)
-    plt.imsave(f"{output_dir}/idct_image.png", idct_img_clipped, cmap='gray')
-    print(f"IDCT image is saved to {output_dir}/idct_image.png\n")
+    plt.imsave(f"{output_dir}/idct_image_uv_{uv_size}.png", idct_img_clipped, cmap='gray')
+    print(f"IDCT image is saved to {output_dir}/idct_image_uv_{uv_size}.png\n")
 
     # === PSNR ===
     psnr_value = compute_psnr(gray_img, idct_img_clipped)
@@ -236,9 +236,9 @@ def main(
     # === visualize in log domain ===
     dct_log_fast = np.log1p(np.abs(dct_img_fast))
     dct_log_fast = dct_log_fast / np.max(dct_log_fast)
-    plt.imsave(f"{output_dir}/dct_log_image.png", dct_log_fast, cmap='gray')
-    print(f"Fast(1D) DCT log-domain image saved to {output_dir}/dct_log_image.png\n")
-    
+    plt.imsave(f"{output_dir}/dct_log_image_uv_{uv_size}.png", dct_log_fast, cmap='gray')
+    print(f"Fast(1D) DCT log-domain image saved to {output_dir}/dct_log_image_uv_{uv_size}.png\n")
+
     # IDCT
     print("Applying Fast(1D) IDCT...")
     start_time = time.time()
@@ -248,8 +248,8 @@ def main(
 
     # Save reconstructed image
     idct_img_fast_clipped = np.clip(idct_img_fast, 0, 255)
-    plt.imsave(f"{output_dir}/idct_image.png", idct_img_fast_clipped, cmap='gray')
-    print(f"Fast(1D) IDCT image is saved to {output_dir}/idct_image.png\n")
+    plt.imsave(f"{output_dir}/idct_image_uv_{uv_size}.png", idct_img_fast_clipped, cmap='gray')
+    print(f"Fast(1D) IDCT image is saved to {output_dir}/idct_image_uv_{uv_size}.png\n")
 
     # === PSNR ===
     psnr_value_fast = compute_psnr(gray_img, idct_img_fast_clipped)
