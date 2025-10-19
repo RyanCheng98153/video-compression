@@ -1,18 +1,13 @@
 # Video Compression HW2 – DCT Report
-**Name:** 鄭睿宏  
-**Student ID:** 314554025 
-**Assignment:** 2D-DCT and Two 1D-DCT Implementation on “lena.png”
+**Name:** 鄭睿宏 314554025 
 
----
+#### 1. Introduction
 
-## 1. Introduction
+I implemented both `2D-DCT` and `two 1D-DCT` approach, and use `PSNR` as evaluation metric.
+DCT can transform image into frequency domain and reconstruct image by inverse transform (IDCT). 
+User can compress image by **discarding high-frequency coefficients** that contribute less to visual perception. This allows for reduction in storage or transmission size with minimal perceptual loss.
 
-In this homework, I implemented both the `2D Discrete Cosine Transform (2D-DCT)` and the `two 1D-DCT (accelerated)` approach, and use `Peak Signal-to-Noise Ratio (PSNR)` as the evaluation metric.
-DCT can transform an image into the frequency domain and reconstruct the image through the inverse transform (IDCT), User can compressed the image **by discarding high-frequency coefficients** that contribute less to visual perception. This allows for reduction in storage or transmission size with minimal perceptual loss.
-
----
-
-### 2. Computational Complexity Analysis
+#### 2. Computational Complexity Analysis
 
 The computational efficiency of **2D-DCT** and the **two 1D-DCT (accelerated)** approach differs significantly due to the separability property of DCT.
 
@@ -43,26 +38,56 @@ Thus, for large images or real-time applications, the **two 1D-DCT method is sig
 
 ---
 
-## 3. Results
-### Grayscale Lena
-![Grayscale Image](images/gray_image.png)
+#### 3. Results
+- Grayscale Lena
+<img src="./images/gray_image.png" width="250" height="250">
 
-### DCT Coefficients (Log Domain)
-![Log Domain DCT](images/dct_log_image.png)
+- DCT Coefficients (Log Domain)
+<img src="./images/dct_log_image.png" width="250" height="250">
 
-### Reconstructed Image (Using IDCT)
-![Reconstructed Image](images/idct_image.png)
+- Reconstructed Image (Using IDCT)
+<img src="./images/idct_image.png" width="250" height="250">
 
 ---
-## 4. Run time and PSNR Comparision
-### 2D-DCT Run-time
-![2D-DCT Runtime](images/)
+#### 4. Runtime & PSNR Comparision (2D-DCT vs. two 1D-DCT)
+##### DCT Runtime (2D-DCT & two 1D-DCT)
+<img src="./images/viz_dct_runtime.png" width="450" height="300">
 
-### two 1D-DCT Run-time
-![2D-DCT Runtime](images/)
+- The **computational complexity** of the 2D-DCT is \( O(N^2 \times N^2) = O(N^4) \), since it directly computes the transform over both spatial dimensions simultaneously.  
+- In contrast, the **two 1D-DCT** approach applies one-dimensional DCT operations sequentially along rows and columns, reducing the complexity to \( O(2 \times N^3) \).  
+- As a result, when the DCT size (`u_size`, `v_size`) doubles,  
+    - the runtime of **2D-DCT** grows approximately **4×**,  
+    - while the runtime of **two 1D-DCT** grows only about **2×**.  
+- From the figure, it is evident that two 1D-DCT achieves a significant speed-up as the block size increases, demonstrating its computational advantage in practice.
 
-### 2D-DCT PSNR
-![2D-DCT Runtime](images/)
 
-### two 1D-DCT PSNR
-![2D-DCT Runtime](images/)
+##### IDCT Runtime (2D-DCT & two 1D-DCT)
+<img src="./images/viz_idct_runtime.png" width="450" height="300">
+
+- A similar trend can be observed for the inverse transform (IDCT).  
+- The **2D-IDCT** runtime scales quadratically with image size, while the **two 1D-IDCT** scales linearly with each dimension.  
+- This property makes the two 1D-IDCT more scalable and efficient for larger image sizes.
+
+
+##### PSNR (2D-DCT & two 1D-DCT)
+<img src="./images/viz_psnr.png" width="450" height="300">
+
+- Both methods theoretically produce identical reconstructed images, leading to nearly identical **PSNR** values.  
+- Minor discrepancies arise from floating-point rounding and computation order differences.  
+- Overall, the two 1D-DCT achieves the same reconstruction quality while greatly reducing computation time, confirming it as the more efficient implementation.
+
+---
+
+#### 5. Observation: Effect of DCT Compression
+- It can be observed that when using DCT for compression, the transform tends to **discard fine details** while still **preserving the main structural features** of the image.  
+- As the `uv_size` increases, more frequency components are retained, leading to higher-quality reconstruction.
+
+##### Reconstructed Images at Different UV Sizes
+- `uv_size = 64`
+<img src="./images/recon_uv64.png" width="300" height="300">
+
+- `uv_size = 128`
+<img src="./images/recon_uv128.png" width="300" height="300">
+
+- `uv_size = 512`
+<img src="./images/recon_uv512.png" width="300" height="300">
