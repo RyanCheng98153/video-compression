@@ -26,7 +26,7 @@ pip install -r requirements.txt
 
 ## Usage
 
-Run the main script (For Experiment Observation):
+Run the main script:
 ```bash
 python main.py --ref_img ./one_gray.png --cur_img ./two_gray.png
 ```
