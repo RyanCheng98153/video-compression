@@ -292,8 +292,6 @@ def main():
     rec_img_2, tokens_2 = process_color_image(img, qtable2, save_prefix)
     cv2.imwrite(f"results/{save_prefix}_reconstructed.png", rec_img_2)
     
-    print("Done. Output in ./results folder.")
-
     # Estimate bytes
     bytes1 = estimate_bytes_from_tokens(tokens_1)
     bytes2 = estimate_bytes_from_tokens(tokens_2)
@@ -317,6 +315,7 @@ def main():
         "./encoded_size_bar.png"
     )
 
-    
+    print("Done. Output in ./results folder.")
+
 if __name__ == "__main__":
     main()
