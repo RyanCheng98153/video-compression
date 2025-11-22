@@ -278,19 +278,19 @@ def main():
         print(f"Cannot load {args.infile}")
         return
 
-    os.makedirs("results", exist_ok=True)
+    os.makedirs("figures", exist_ok=True)
 
     # Main Process QTable1
     print("Processing COLOR image with QTable1...")
     save_prefix = "qtable1_color"
     rec_img_1, tokens_1 = process_color_image(img, qtable1, save_prefix)
-    cv2.imwrite(f"results/{save_prefix}_reconstructed.png", rec_img_1)
+    cv2.imwrite(f"figures/{save_prefix}_reconstructed.png", rec_img_1)
 
     # Main Process QTable2
     print("Processing COLOR image with QTable2...")
     save_prefix = "qtable2_color"
     rec_img_2, tokens_2 = process_color_image(img, qtable2, save_prefix)
-    cv2.imwrite(f"results/{save_prefix}_reconstructed.png", rec_img_2)
+    cv2.imwrite(f"figures/{save_prefix}_reconstructed.png", rec_img_2)
     
     # Estimate bytes
     bytes1 = estimate_bytes_from_tokens(tokens_1)
@@ -315,7 +315,7 @@ def main():
         "./encoded_size_bar.png"
     )
 
-    print("Done. Output in ./results folder.")
+    print("Done. Output in ./figures folder.")
 
 if __name__ == "__main__":
     main()
