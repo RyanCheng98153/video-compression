@@ -1,6 +1,6 @@
 #!/bin/bash
 
-IMAGES=("lena" "tiger" "pizza")
+IMAGES=("lena")
 IMG_DIR=images
 OUT=results
 
