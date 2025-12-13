@@ -1,48 +1,72 @@
 #!/bin/bash
 
-PNG=images/lena.png
-JPG=images/lena.jpg
+IMAGES=("lena" "tiger" "pizza")
+IMG_DIR=images
 OUT=results
+
 mkdir -p ${OUT}
 
-python png_to_jpg.py --png ${PNG} --jpg ${JPG}
+echo "Running JPEG Decoder Ablation Study (Multi-image)"
+echo "==============================================="
 
-echo "Running JPEG Decoder Ablation Study..."
-echo "PNG: ${PNG}"
-echo "JPG: ${JPG}"
-echo "=============================="
+# 全部圖片的總 CSV
+echo "Image,YCbCr,IDCT,QTable,Time,PSNR,SSIM" > ${OUT}/results_all.csv
 
-# CSV Header
-echo "YCbCr,IDCT,QTable,Time,PSNR,SSIM" > ${OUT}/results.csv
-
-for YCBCR in formula table
+for IMG in "${IMAGES[@]}"
 do
-  for IDCT in 2d two1d
+  PNG=${IMG_DIR}/${IMG}.png
+  JPG=${IMG_DIR}/${IMG}.jpg
+  IMG_OUT=${OUT}/${IMG}
+
+  mkdir -p ${IMG_OUT}
+
+  echo "==============================================="
+  echo "Processing image: ${IMG}"
+  echo "PNG: ${PNG}"
+  echo "JPG: ${JPG}"
+
+  # PNG -> JPG
+  python png_to_jpg.py --png ${PNG} --jpg ${JPG}
+
+  # 每張圖自己的 CSV
+  echo "YCbCr,IDCT,QTable,Time,PSNR,SSIM" > ${IMG_OUT}/results.csv
+
+  for YCBCR in formula table
   do
-    for Q in 1 2
+    for IDCT in 2d two1d
     do
-      echo "----------------------------------"
-      echo "YCbCr=${YCBCR}, IDCT=${IDCT}, QTable=${Q}"
+      for Q in 1 2
+      do
+        echo "----------------------------------"
+        echo "Image=${IMG}, YCbCr=${YCBCR}, IDCT=${IDCT}, QTable=${Q}"
 
-      python main.py \
-        --png ${PNG} \
-        --jpg ${JPG} \
-        --ycbcr ${YCBCR} \
-        --idct ${IDCT} \
-        --qtable ${Q} \
-        | tee ${OUT}/log_${YCBCR}_${IDCT}_Q${Q}.txt
+        LOG=${IMG_OUT}/log_${YCBCR}_${IDCT}_Q${Q}.txt
 
-      # Extract metrics to CSV
-      TIME=$(grep "Time" ${OUT}/log_${YCBCR}_${IDCT}_Q${Q}.txt | awk '{print $3}')
-      PSNR=$(grep "PSNR" ${OUT}/log_${YCBCR}_${IDCT}_Q${Q}.txt | awk '{print $3}')
-      SSIM=$(grep "SSIM" ${OUT}/log_${YCBCR}_${IDCT}_Q${Q}.txt | awk '{print $3}')
+        python main.py \
+          --png ${PNG} \
+          --jpg ${JPG} \
+          --ycbcr ${YCBCR} \
+          --idct ${IDCT} \
+          --qtable ${Q} \
+          | tee ${LOG}
 
-      echo "${YCBCR},${IDCT},${Q},${TIME},${PSNR},${SSIM}" >> ${OUT}/results.csv
+        # Extract metrics
+        TIME=$(grep "Time" ${LOG} | awk '{print $3}')
+        PSNR=$(grep "PSNR" ${LOG} | awk '{print $3}')
+        SSIM=$(grep "SSIM" ${LOG} | awk '{print $3}')
 
+        # 寫入單張圖 CSV
+        echo "${YCBCR},${IDCT},${Q},${TIME},${PSNR},${SSIM}" >> ${IMG_OUT}/results.csv
+
+        # 寫入總表 CSV
+        echo "${IMG},${YCBCR},${IDCT},${Q},${TIME},${PSNR},${SSIM}" >> ${OUT}/results_all.csv
+
+      done
     done
   done
 done
 
-echo "=============================="
+echo "==============================================="
 echo "All experiments completed."
-echo "Results saved to ${OUT}/results.csv"
+echo "Per-image results: ${OUT}/<image>/results.csv"
+echo "Overall results  : ${OUT}/results_all.csv"
