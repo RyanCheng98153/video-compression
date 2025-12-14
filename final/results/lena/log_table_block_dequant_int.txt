@@ -2,10 +2,10 @@
 YCbCr        : table
 IDCT         : block
 Dequant      : int
-Run times    : 0.613954,0.612182,0.610874,0.610156,0.612699,0.610720,0.612208,0.610971,0.609823,0.611585
-Time mean    : 0.611517
-Time std     : 0.001197
-Time total   : 6.115205
+Run times    : 0.742751,0.745314,0.743836,0.727097,0.733574,0.732155,0.726322,0.733945,0.733721,0.723349
+Time mean    : 0.734206
+Time std     : 0.007243
+Time total   : 7.342109
 PSNR         : 37.54
 SSIM         : 0.9381
 Output image : results/lena/result_images/table_block_int.png

@@ -2,10 +2,10 @@
 YCbCr        : formula
 IDCT         : two1d
 Dequant      : int
-Run times    : 1.407495,1.413996,1.401197,1.390854,1.413851,1.392276,1.406925,1.402239,1.406967,1.400911
-Time mean    : 1.403671
-Time std     : 0.007458
-Time total   : 14.036750
+Run times    : 0.974440,0.958963,0.932124,0.928711,0.924570,0.930673,0.932820,0.929999,0.935161,0.923076
+Time mean    : 0.937054
+Time std     : 0.015604
+Time total   : 9.370587
 PSNR         : 38.15
 SSIM         : 0.9404
 Output image : results/lena/result_images/formula_two1d_int.png
