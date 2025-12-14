@@ -27,6 +27,11 @@ def decode_full_image(args, jpeg_bytes: bytes):
         jpeg_bytes,
         zigzag_on=(args.zigzag == "on")
     )
+    
+    print("Y DC block (0,0):", Yb_q[0,0,0,0])
+    print("Y DC block (0,1):", Yb_q[0,1,0,0])
+    print("Y DC block (1,0):", Yb_q[1,0,0,0])
+    print("Y DC block (1,1):", Yb_q[1,1,0,0])
 
     H = meta["height"]
     W = meta["width"]

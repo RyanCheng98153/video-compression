@@ -383,6 +383,14 @@ def decode_one_block(
         diff = receive_extend(v, s)
         dc = prev_dc + diff
         prev_dc = dc
+                
+        # ===== DEBUG: print DC of first few blocks =====
+        if not hasattr(decode_one_block, "_dc_print_count"):
+            decode_one_block._dc_print_count = 0
+
+        if decode_one_block._dc_print_count < 20:
+            print(f"[DEBUG] DC block {decode_one_block._dc_print_count}: {dc}")
+            decode_one_block._dc_print_count += 1
     except (EOFError, RuntimeError):
         # No more data → DC = previous DC
         dc = prev_dc
