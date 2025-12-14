@@ -23,10 +23,10 @@ qtable2 = np.array([
     [59, 59, 59, 59, 59, 59, 59, 59]
 ], dtype=np.float32)
 
-def dequantize(block, table_id):
+def dequantize_blocks(blocks: np.ndarray, table_id: int) -> np.ndarray:
     if table_id == 1:
-        return block * qtable1
+        return blocks * qtable1
     elif table_id == 2:
-        return block * qtable2
+        return blocks * qtable2
     else:
         raise ValueError("Unknown quantization table")
