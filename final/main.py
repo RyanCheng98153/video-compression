@@ -3,7 +3,6 @@ import argparse
 import numpy as np
 from PIL import Image
 import os
-import time
 
 from jpeg_decoder import decode_baseline_huffman
 from quantization import dequantize_blocks
@@ -12,13 +11,33 @@ from ycbcr import ycbcr_to_rgb_formula, ycbcr_to_rgb_table
 from metrics import compute_metrics, Timer
 
 
+def apply_idct_per_block(blocks, idct_fn):
+    """
+    blocks : (bh, bw, 8, 8)
+    return : (H, W)
+    """
+    bh, bw, _, _ = blocks.shape
+    H = bh * 8
+    W = bw * 8
+    out = np.zeros((H, W), dtype=np.float32)
+
+    for by in range(bh):
+        for bx in range(bw):
+            out[
+                by*8:(by+1)*8,
+                bx*8:(bx+1)*8
+            ] = idct_fn(blocks[by, bx])
+
+    return out
+
+
 def decode_full_image(args, jpeg_bytes: bytes):
     # ------------------------------------------------------------
-    # 1. Entropy + Huffman decode (real JPEG decoder)
+    # 1. Entropy + Huffman decode
     # ------------------------------------------------------------
     Yb_q, Cbb_q, Crb_q, meta = decode_baseline_huffman(
         jpeg_bytes,
-        zigzag_on=True  # ZigZag is mandatory
+        zigzag_on=True
     )
 
     H = meta["height"]
@@ -26,7 +45,6 @@ def decode_full_image(args, jpeg_bytes: bytes):
     qtables = meta["qtables"]
     comps = meta["components"]
 
-    # Component → quant table
     qY  = qtables[comps[1].tq]
     qCb = qtables[comps[2].tq]
     qCr = qtables[comps[3].tq]
@@ -39,17 +57,17 @@ def decode_full_image(args, jpeg_bytes: bytes):
     Crb = dequantize_blocks(Crb_q, qCr, args.dequant)
 
     # ------------------------------------------------------------
-    # 3. IDCT (ABLATION)
+    # 3. IDCT (ABLATION)  ✅ FIXED
     # ------------------------------------------------------------
     if args.idct == "2d":
-        Y  = idct2d(Yb)
-        Cb = idct2d(Cbb)
-        Cr = idct2d(Crb)
+        Y  = apply_idct_per_block(Yb,  idct2d)
+        Cb = apply_idct_per_block(Cbb, idct2d)
+        Cr = apply_idct_per_block(Crb, idct2d)
 
     elif args.idct == "two1d":
-        Y  = idct_two_1d(Yb)
-        Cb = idct_two_1d(Cbb)
-        Cr = idct_two_1d(Crb)
+        Y  = apply_idct_per_block(Yb,  idct_two_1d)
+        Cb = apply_idct_per_block(Cbb, idct_two_1d)
+        Cr = apply_idct_per_block(Crb, idct_two_1d)
 
     elif args.idct == "block":
         Y  = idct_block_based(Yb)
@@ -60,7 +78,7 @@ def decode_full_image(args, jpeg_bytes: bytes):
         raise ValueError("Unknown IDCT method")
 
     # ------------------------------------------------------------
-    # 4. YCbCr → RGB (ABLATION)
+    # 4. YCbCr → RGB
     # ------------------------------------------------------------
     if args.ycbcr == "formula":
         rgb = ycbcr_to_rgb_formula(Y, Cb, Cr)
@@ -73,7 +91,6 @@ def decode_full_image(args, jpeg_bytes: bytes):
 
 
 def run_experiment(args):
-    # Ground truth
     gt = np.array(Image.open(args.png).convert("RGB"), dtype=np.float32)
 
     with open(args.jpg, "rb") as f:
@@ -90,7 +107,6 @@ def run_experiment(args):
 
     psnr, ssim = compute_metrics(gt, rgb)
 
-    # Save image
     os.makedirs(args.out_img_dir, exist_ok=True)
     out_path = os.path.join(
         args.out_img_dir,
@@ -98,18 +114,13 @@ def run_experiment(args):
     )
     Image.fromarray(rgb.astype(np.uint8)).save(out_path)
 
-    # Stats
-    time_mean = np.mean(times)
-    time_std  = np.std(times)
-
-    # Print for bash parsing
     print("==== Experiment Result ====")
     print(f"YCbCr        : {args.ycbcr}")
     print(f"IDCT         : {args.idct}")
     print(f"Dequant      : {args.dequant}")
     print(f"Run times    : {','.join(f'{t:.6f}' for t in times)}")
-    print(f"Time mean    : {time_mean:.6f}")
-    print(f"Time std     : {time_std:.6f}")
+    print(f"Time mean    : {np.mean(times):.6f}")
+    print(f"Time std     : {np.std(times):.6f}")
     print(f"Time total   : {total_timer.elapsed:.6f}")
     print(f"PSNR         : {psnr:.2f}")
     print(f"SSIM         : {ssim:.4f}")
@@ -120,12 +131,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--png", required=True)
     parser.add_argument("--jpg", required=True)
-
-    # Ablation dimensions
     parser.add_argument("--ycbcr", choices=["formula", "table"], required=True)
     parser.add_argument("--idct", choices=["2d", "two1d", "block"], required=True)
     parser.add_argument("--dequant", choices=["float", "int"], required=True)
-
     parser.add_argument("--out_img_dir", required=True)
     args = parser.parse_args()
 
