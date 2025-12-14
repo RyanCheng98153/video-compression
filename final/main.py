@@ -4,11 +4,11 @@ import numpy as np
 from PIL import Image
 import os
 
-from jpeg_decoder import decode_baseline_huffman
-from quantization import dequantize_blocks
-from idct import idct2d, idct_two_1d, idct_block_based
-from ycbcr import ycbcr_to_rgb_formula, ycbcr_to_rgb_table
-from metrics import compute_metrics, Timer
+from src.jpeg_decoder import decode_baseline_huffman
+from src.quantization import dequantize_blocks
+from src.idct import idct2d, idct_two_1d, idct_block_based
+from src.ycbcr import ycbcr_to_rgb_formula, ycbcr_to_rgb_table
+from src.metrics import compute_metrics, Timer
 
 
 def apply_idct_per_block(blocks, idct_fn):
