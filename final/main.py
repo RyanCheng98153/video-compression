@@ -5,7 +5,6 @@ from PIL import Image
 import os
 
 from jpeg_decoder import decode_baseline_huffman
-from quantization import qtable1, qtable2  # 你的兩種 ablation Q table
 from idct import idct_blocks
 from ycbcr import ycbcr_to_rgb_formula, ycbcr_to_rgb_table
 from metrics import Timer, compute_metrics
@@ -16,9 +15,11 @@ def from_blocks(blocks: np.ndarray) -> np.ndarray:
     bh, bw, _, _ = blocks.shape
     return blocks.transpose(0, 2, 1, 3).reshape(bh * 8, bw * 8)
 
-def apply_qtable(blocks: np.ndarray, q: np.ndarray) -> np.ndarray:
+
+def apply_qtable_per_component(blocks: np.ndarray, q: np.ndarray) -> np.ndarray:
     # blocks: (bh, bw, 8, 8), q: (8, 8)
-    return blocks * q.astype(np.float32)
+    return blocks * q.astype(np.float32)[None, None, :, :]
+
 
 def decode_full_image(args, jpeg_bytes: bytes):
     # 1) Parse + Huffman decode -> quantized DCT coeff blocks
@@ -26,23 +27,27 @@ def decode_full_image(args, jpeg_bytes: bytes):
         jpeg_bytes,
         zigzag_on=(args.zigzag == "on")
     )
+
     H = meta["height"]
     W = meta["width"]
+    qtables = meta["qtables"]
+    comps = meta["components"]
+    sos = meta["sos_specs"]  # scan order
 
-    # 2) Choose quantization table for ablation
-    # NOTE: this is "override Qtable" ablation.
-    # Real JPEG would use meta["qtables"][tq_id] per component.
-    if args.qtable == 1:
-        q = qtable1
-    else:
-        q = qtable2
+    # Map SOS order -> cid for Y/Cb/Cr returned by decoder
+    cid_Y, cid_Cb, cid_Cr = [s.cid for s in sos]
 
-    # 3) Dequantize (using chosen ablation qtable)
-    Yb = apply_qtable(Yb_q, q)
-    Cbb = apply_qtable(Cbb_q, q)
-    Crb = apply_qtable(Crb_q, q)
+    # 2) Use REAL JPEG DQT tables (per component tq id)
+    qY = qtables[comps[cid_Y].tq]
+    qC = qtables[comps[cid_Cb].tq]  # Cb and Cr usually share the same table id
+    qR = qtables[comps[cid_Cr].tq]
 
-    # 4) IDCT ablation
+    # 3) Dequantize with correct table
+    Yb = apply_qtable_per_component(Yb_q, qY)
+    Cbb = apply_qtable_per_component(Cbb_q, qC)
+    Crb = apply_qtable_per_component(Crb_q, qR)
+
+    # 4) IDCT ablation (spatial blocks) + level shift
     Ysp = idct_blocks(Yb, args.idct) + 128.0
     Cbsp = idct_blocks(Cbb, args.idct) + 128.0
     Crsp = idct_blocks(Crb, args.idct) + 128.0
@@ -82,7 +87,7 @@ def run_experiment(args):
     os.makedirs(args.out_img_dir, exist_ok=True)
     out_img_path = os.path.join(
         args.out_img_dir,
-        f"{args.ycbcr}_{args.idct}_Q{args.qtable}_zigzag_{args.zigzag}.png"
+        f"{args.ycbcr}_{args.idct}_zigzag_{args.zigzag}.png"
     )
     Image.fromarray(rgb.clip(0, 255).astype(np.uint8)).save(out_img_path)
 
@@ -92,7 +97,6 @@ def run_experiment(args):
     print("==== Experiment Result ====")
     print(f"YCbCr        : {args.ycbcr}")
     print(f"IDCT         : {args.idct}")
-    print(f"Q-Table      : {args.qtable}")
     print(f"ZigZag       : {args.zigzag}")
     print(f"Run times    : {','.join(f'{t:.6f}' for t in times)}")
     print(f"Time mean    : {time_mean:.6f}")
@@ -108,16 +112,13 @@ if __name__ == "__main__":
     parser.add_argument("--png", required=True)
     parser.add_argument("--jpg", required=True)
 
-    # 2 methods
+    # Ablation 1: 2 methods
     parser.add_argument("--ycbcr", choices=["formula", "table"], required=True)
 
-    # 3 methods
+    # Ablation 2: 3 methods
     parser.add_argument("--idct", choices=["2d", "two1d", "blocked"], required=True)
 
-    # 2 methods (your ablation qtables)
-    parser.add_argument("--qtable", type=int, choices=[1, 2], required=True)
-
-    # ZigZag ablation
+    # Ablation 3: ZigZag on/off
     parser.add_argument("--zigzag", choices=["on", "off"], default="on")
 
     parser.add_argument("--out_img_dir", required=True)
