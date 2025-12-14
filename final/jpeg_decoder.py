@@ -519,14 +519,6 @@ def decode_baseline_huffman(jpeg_bytes: bytes, zigzag_on: bool = True):
             # Decode MCU (Y, Cb, Cr) in scan order
             try:
                 for s in comps:
-                    htD = jp.ht_dc[s.td]
-                    htA = jp.ht_ac[s.ta]
-                    coeff8, prev = decode_one_block(br, htD, htA, prev_dc[s.cid], zigzag_on)
-                    prev_dc[s.cid] = prev
-                    blocks[s.cid][by, bx] = coeff8
-            # Decode MCU (Y, Cb, Cr) in scan order
-            try:
-                for s in comps:
                     # if an RST appears (should be between MCUs), reset state and restart MCU cleanly
                     if br.pending_rst is not None:
                         reset_predictors_and_align()
@@ -537,12 +529,12 @@ def decode_baseline_huffman(jpeg_bytes: bytes, zigzag_on: bool = True):
                     coeff8, prev = decode_one_block(br, htD, htA, prev_dc[s.cid], zigzag_on)
                     prev_dc[s.cid] = prev
                     blocks[s.cid][by, bx] = coeff8
-
+            
             except RuntimeError:
                 # RST boundary: predictors reset already, redo THIS MCU without advancing
                 bx -= 1  # we'll ++ at end of loop, so neutralize
                 continue
-
+            
             except EOFError:
                 # End of scan: leave remaining blocks as zeros and finish decoding
                 cid_Y, cid_Cb, cid_Cr = [s.cid for s in comps]
