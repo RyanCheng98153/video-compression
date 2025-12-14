@@ -11,7 +11,9 @@ def png_to_jpg(png_path, jpg_path, quality=95):
         "JPEG",
         quality=quality,
         subsampling=0,
-        restart=0     # don't use restart markers
+        restart=0,
+        progressive=False,
+        optimize=False
     )
 
 
