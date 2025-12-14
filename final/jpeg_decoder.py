@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Dict, Tuple, List, Optional
+from typing import Dict, Tuple, Optional
 import numpy as np
 
 # ============================================================
@@ -28,7 +28,6 @@ def receive_extend(v: int, t: int) -> int:
         return v - ((1 << t) - 1)
     return v
 
-
 # ============================================================
 # Huffman
 # ============================================================
@@ -44,7 +43,6 @@ class HuffmanTable:
             if (length, code) in self.codes:
                 return self.codes[(length, code)]
         raise ValueError("Huffman decode failed")
-
 
 def build_huffman_table(lengths, symbols):
     code = 0
@@ -62,14 +60,11 @@ def build_huffman_table(lengths, symbols):
         code <<= 1
     return HuffmanTable(table, max_len if max_len else 16)
 
-
 # ============================================================
 # Exceptions
 # ============================================================
 class ScanTerminated(Exception):
-    """Entropy-coded segment terminated by marker (EOI / next marker)."""
     pass
-
 
 # ============================================================
 # Entropy Bit Reader
@@ -81,7 +76,6 @@ class EntropyBitReader:
         self.bit_buf = 0
         self.bit_cnt = 0
         self.pending_rst: Optional[int] = None
-        self.done = False
 
     def reset_bits(self):
         self.bit_buf = 0
@@ -95,28 +89,20 @@ class EntropyBitReader:
         return b
 
     def _fill(self):
-        while self.bit_cnt <= 16 and not self.done and self.pending_rst is None:
+        while self.bit_cnt <= 16 and self.pending_rst is None:
             b = self._read_byte()
             if b is None:
-                self.done = True
-                return
+                raise ScanTerminated()
 
             if b == 0xFF:
                 nxt = self._read_byte()
-                if nxt is None:
-                    self.done = True
-                    return
-
                 if nxt == 0x00:
-                    # stuffed FF
                     b = 0xFF
                 elif 0xD0 <= nxt <= 0xD7:
-                    # restart marker
                     self.pending_rst = nxt
                     self.reset_bits()
                     return
                 else:
-                    # scan terminated by marker (EOI / next segment)
                     raise ScanTerminated()
 
             self.bit_buf = (self.bit_buf << 8) | b
@@ -130,11 +116,6 @@ class EntropyBitReader:
 
         while self.bit_cnt < n:
             self._fill()
-            if self.pending_rst is not None:
-                raise RuntimeError("RST pending")
-
-        if self.bit_cnt < n:
-            raise EOFError()
 
         shift = self.bit_cnt - n
         val = (self.bit_buf >> shift) & ((1 << n) - 1)
@@ -145,9 +126,8 @@ class EntropyBitReader:
     def get_bit(self):
         return self.get_bits(1)
 
-
 # ============================================================
-# JPEG Parser (DQT / DHT / SOF / SOS)
+# JPEG structures
 # ============================================================
 @dataclass
 class Component:
@@ -162,7 +142,9 @@ class SOSComponentSpec:
     td: int
     ta: int
 
-
+# ============================================================
+# JPEG Parser
+# ============================================================
 class JPEGParser:
     def __init__(self, jpeg_bytes: bytes):
         self.b = jpeg_bytes
@@ -177,9 +159,6 @@ class JPEGParser:
 
     def parse(self):
         b = self.b
-        if b[:2] != b"\xFF\xD8":
-            raise ValueError("Not JPEG")
-
         i = 2
         while i < len(b):
             if b[i] != 0xFF:
@@ -189,10 +168,7 @@ class JPEGParser:
                 i += 1
             marker = b[i]; i += 1
 
-            if marker == 0xD9:  # EOI
-                break
-
-            if marker == 0xDA:  # SOS
+            if marker == 0xDA:
                 length = (b[i] << 8) | b[i+1]
                 seg = b[i+2:i+length]
                 i += length
@@ -241,8 +217,8 @@ class JPEGParser:
                 self.ht_ac[th] = ht
 
     def _parse_sof0(self, seg):
-        self.height = (seg[1] << 8) | seg[2]
-        self.width  = (seg[3] << 8) | seg[4]
+        self.height = (seg[1]<<8) | seg[2]
+        self.width  = (seg[3]<<8) | seg[4]
         nf = seg[5]
         j = 6
         for _ in range(nf):
@@ -259,38 +235,27 @@ class JPEGParser:
             cid = seg[j]
             tdta = seg[j+1]
             j += 2
-            self.sos_specs.append(
-                SOSComponentSpec(cid, tdta>>4, tdta&0x0F)
-            )
+            self.sos_specs.append(SOSComponentSpec(cid, tdta>>4, tdta&0x0F))
 
     def _extract_scan_data(self, b, i):
         out = bytearray()
         while i < len(b):
             if b[i] != 0xFF:
-                out.append(b[i])
-                i += 1
-                continue
-            if i+1 >= len(b):
-                break
+                out.append(b[i]); i += 1; continue
             if b[i+1] == 0x00 or (0xD0 <= b[i+1] <= 0xD7):
-                out.extend(b[i:i+2])
-                i += 2
-                continue
+                out.extend(b[i:i+2]); i += 2; continue
             break
         return bytes(out)
 
-
 # ============================================================
-# Block decode
+# Decode blocks
 # ============================================================
 def decode_one_block(br, ht_dc, ht_ac, prev_dc, zigzag_on):
     coeff = np.zeros((8,8), np.int16)
-
     s = ht_dc.decode(br)
-    v = br.get_bits(s)
-    dc = prev_dc + receive_extend(v, s)
-    prev_dc = dc
+    dc = prev_dc + receive_extend(br.get_bits(s), s)
     coeff[0,0] = dc
+    prev_dc = dc
 
     k = 1
     while k < 64:
@@ -298,61 +263,64 @@ def decode_one_block(br, ht_dc, ht_ac, prev_dc, zigzag_on):
         if rs == 0:
             break
         if rs == 0xF0:
-            k += 16
-            continue
+            k += 16; continue
         run = rs >> 4
         size = rs & 0x0F
         k += run
-        if k >= 64:
-            break
-        v = br.get_bits(size)
-        ac = receive_extend(v, size)
-        if zigzag_on:
-            r,c = ZIGZAG_POS[k]
-        else:
-            r,c = divmod(k, 8)
-        coeff[r,c] = ac
+        v = receive_extend(br.get_bits(size), size)
+        r,c = ZIGZAG_POS[k] if zigzag_on else divmod(k,8)
+        coeff[r,c] = v
         k += 1
 
     return coeff.astype(np.float32), prev_dc
 
-
 # ============================================================
-# Main decode
+# Public API
 # ============================================================
 def decode_baseline_huffman(jpeg_bytes: bytes, zigzag_on=True):
     jp = JPEGParser(jpeg_bytes)
     jp.parse()
 
-    comps = jp.sos_specs
     H, W = jp.height, jp.width
     bh, bw = (H+7)//8, (W+7)//8
 
-    blocks = {s.cid: np.zeros((bh,bw,8,8), np.float32) for s in comps}
-    prev_dc = {s.cid: 0 for s in comps}
+    blocks = {s.cid: np.zeros((bh,bw,8,8), np.float32) for s in jp.sos_specs}
+    prev_dc = {s.cid: 0 for s in jp.sos_specs}
     br = EntropyBitReader(jp.scan_data)
 
     for by in range(bh):
         for bx in range(bw):
-            for s in comps:
+            for s in jp.sos_specs:
                 while True:
                     try:
                         coeff, p = decode_one_block(
                             br, jp.ht_dc[s.td], jp.ht_ac[s.ta],
                             prev_dc[s.cid], zigzag_on
                         )
-                        prev_dc[s.cid] = p
                         blocks[s.cid][by,bx] = coeff
+                        prev_dc[s.cid] = p
                         break
                     except RuntimeError:
-                        # RST
-                        for k in prev_dc:
-                            prev_dc[k] = 0
+                        for k in prev_dc: prev_dc[k] = 0
                         br.pending_rst = None
                         br.reset_bits()
                     except ScanTerminated:
-                        cid = [x.cid for x in comps]
-                        return blocks[cid[0]], blocks[cid[1]], blocks[cid[2]], {}
+                        meta = {
+                            "height": jp.height,
+                            "width": jp.width,
+                            "qtables": jp.qtables,
+                            "components": jp.components,
+                            "sos_specs": jp.sos_specs,
+                        }
+                        cids = [x.cid for x in jp.sos_specs]
+                        return blocks[cids[0]], blocks[cids[1]], blocks[cids[2]], meta
 
-    cid = [x.cid for x in comps]
-    return blocks[cid[0]], blocks[cid[1]], blocks[cid[2]], {}
+    meta = {
+        "height": jp.height,
+        "width": jp.width,
+        "qtables": jp.qtables,
+        "components": jp.components,
+        "sos_specs": jp.sos_specs,
+    }
+    cids = [x.cid for x in jp.sos_specs]
+    return blocks[cids[0]], blocks[cids[1]], blocks[cids[2]], meta
