@@ -35,6 +35,12 @@ pip install -r requirements.txt
 
 ## Usage
 
+Just use the defined `run.sh`: 
+
+```bash
+bash ./run.sh
+```
+
 Use main.py as the entry point:
 
 ```bash
@@ -81,6 +87,13 @@ Output
 > [!NOTE]
 > All the results will be stored in `results/<image>/` dir.
 > All the decoded images will be stored in `results/<image>/result_images/` dir
+
+Output Directory Structure
+results/`<image>`/
+├── result_images/
+│   ├── formula_2d_float.png
+│   ├── table_two1d_int.png
+│   └── ...
 
 ## License
 
