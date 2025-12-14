@@ -6,11 +6,11 @@ OUT=results
 
 mkdir -p ${OUT}
 
-echo "Running JPEG Decoder Ablation Study (Multi-image, 10 runs)"
-echo "========================================================="
+echo "Running TRUE JPEG Decoder Ablation Study (Multi-image, 10 runs)"
+echo "================================================================"
 
 # Global CSV header
-echo "Image,YCbCr,IDCT,QTable,\
+echo "Image,YCbCr,IDCT,QTable,ZigZag,\
 run_1,run_2,run_3,run_4,run_5,run_6,run_7,run_8,run_9,run_10,\
 time_mean,time_std,time_total,PSNR,SSIM" \
 > ${OUT}/results_all.csv
@@ -26,16 +26,16 @@ do
   mkdir -p ${IMG_OUT}
   mkdir -p ${IMG_IMG_OUT}
 
-  echo "========================================================="
+  echo "================================================================"
   echo "Processing image: ${IMG}"
   echo "PNG: ${PNG}"
   echo "JPG: ${JPG}"
 
-  # PNG -> JPG
+  # PNG -> JPG (force 4:4:4, baseline JPEG)
   python png_to_jpg.py --png ${PNG} --jpg ${JPG}
 
   # Per-image CSV header
-  echo "YCbCr,IDCT,QTable,\
+  echo "YCbCr,IDCT,QTable,ZigZag,\
 run_1,run_2,run_3,run_4,run_5,run_6,run_7,run_8,run_9,run_10,\
 time_mean,time_std,time_total,PSNR,SSIM" \
   > ${IMG_OUT}/results.csv
@@ -43,48 +43,52 @@ time_mean,time_std,time_total,PSNR,SSIM" \
 
   for YCBCR in formula table
   do
-    for IDCT in 2d two1d
+    for IDCT in 2d two1d blocked
     do
       for Q in 1 2
       do
-        echo "---------------------------------------------------------"
-        echo "Image=${IMG}, YCbCr=${YCBCR}, IDCT=${IDCT}, QTable=${Q}"
+        for Z in on off
+        do
+          echo "----------------------------------------------------------------"
+          echo "Image=${IMG}, YCbCr=${YCBCR}, IDCT=${IDCT}, QTable=${Q}, ZigZag=${Z}"
 
-        LOG=${IMG_OUT}/log_${YCBCR}_${IDCT}_Q${Q}.txt
+          LOG=${IMG_OUT}/log_${YCBCR}_${IDCT}_Q${Q}_zigzag_${Z}.txt
 
-        python main.py \
-          --png ${PNG} \
-          --jpg ${JPG} \
-          --ycbcr ${YCBCR} \
-          --idct ${IDCT} \
-          --qtable ${Q} \
-          --out_img_dir ${IMG_IMG_OUT} \
-          | tee ${LOG}
+          python main.py \
+            --png ${PNG} \
+            --jpg ${JPG} \
+            --ycbcr ${YCBCR} \
+            --idct ${IDCT} \
+            --qtable ${Q} \
+            --zigzag ${Z} \
+            --out_img_dir ${IMG_IMG_OUT} \
+            | tee ${LOG}
 
-        # -------------------------
-        # Extract values from log
-        # -------------------------
-        RUNS=$(grep "Run times" ${LOG} | cut -d':' -f2 | tr -d ' ')
-        TIME_MEAN=$(grep "Time mean" ${LOG} | awk '{print $4}')
-        TIME_STD=$(grep "Time std" ${LOG} | awk '{print $4}')
-        TIME_TOTAL=$(grep "Time total" ${LOG} | awk '{print $4}')
-        PSNR=$(grep "PSNR" ${LOG} | awk '{print $3}')
-        SSIM=$(grep "SSIM" ${LOG} | awk '{print $3}')
+          # -------------------------
+          # Extract values from log
+          # -------------------------
+          RUNS=$(grep "Run times" ${LOG} | cut -d':' -f2 | tr -d ' ')
+          TIME_MEAN=$(grep "Time mean" ${LOG} | awk '{print $4}')
+          TIME_STD=$(grep "Time std" ${LOG} | awk '{print $4}')
+          TIME_TOTAL=$(grep "Time total" ${LOG} | awk '{print $4}')
+          PSNR=$(grep "PSNR" ${LOG} | awk '{print $3}')
+          SSIM=$(grep "SSIM" ${LOG} | awk '{print $3}')
 
-        # Per-image CSV
-        echo "${YCBCR},${IDCT},${Q},${RUNS},${TIME_MEAN},${TIME_STD},${TIME_TOTAL},${PSNR},${SSIM}" \
-          >> ${IMG_OUT}/results.csv
+          # Per-image CSV
+          echo "${YCBCR},${IDCT},${Q},${Z},${RUNS},${TIME_MEAN},${TIME_STD},${TIME_TOTAL},${PSNR},${SSIM}" \
+            >> ${IMG_OUT}/results.csv
 
-        # Global CSV
-        echo "${IMG},${YCBCR},${IDCT},${Q},${RUNS},${TIME_MEAN},${TIME_STD},${TIME_TOTAL},${PSNR},${SSIM}" \
-          >> ${OUT}/results_all.csv
+          # Global CSV
+          echo "${IMG},${YCBCR},${IDCT},${Q},${Z},${RUNS},${TIME_MEAN},${TIME_STD},${TIME_TOTAL},${PSNR},${SSIM}" \
+            >> ${OUT}/results_all.csv
 
+        done
       done
     done
   done
 done
 
-echo "========================================================="
+echo "================================================================"
 echo "All experiments completed."
 echo "Per-image results : ${OUT}/<image>/results.csv"
 echo "Overall results   : ${OUT}/results_all.csv"
