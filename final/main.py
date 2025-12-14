@@ -7,7 +7,7 @@ import time
 
 from jpeg_decoder import decode_baseline_huffman
 from quantization import dequantize_blocks
-from idct import idct2d, idct_two_1d, idct_blocks
+from idct import idct2d, idct_two_1d, idct_block_based
 from ycbcr import ycbcr_to_rgb_formula, ycbcr_to_rgb_table
 from metrics import compute_metrics, Timer
 

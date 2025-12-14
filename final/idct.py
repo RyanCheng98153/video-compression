@@ -1,44 +1,81 @@
+# idct.py
 import numpy as np
 from scipy.fftpack import idct
 
+# ============================================================
+# 1. Standard 2D IDCT (per 8x8 block)
+# ============================================================
 def idct2d(block: np.ndarray) -> np.ndarray:
-    return idct(idct(block, axis=0, norm="ortho"), axis=1, norm="ortho")
+    """
+    Perform 2D IDCT on a single 8x8 block.
 
+    Input:
+        block: (8, 8) dequantized DCT coefficients (float32)
+
+    Output:
+        (8, 8) spatial domain block (float32)
+    """
+    return idct(
+        idct(block, axis=0, norm="ortho"),
+        axis=1,
+        norm="ortho"
+    )
+
+
+# ============================================================
+# 2. Two 1D IDCT (row-wise then column-wise)
+# ============================================================
 def idct_two_1d(block: np.ndarray) -> np.ndarray:
-    tmp = np.zeros_like(block)
+    """
+    Perform IDCT by applying 1D IDCT twice (rows then columns).
+
+    Input:
+        block: (8, 8) dequantized DCT coefficients (float32)
+
+    Output:
+        (8, 8) spatial domain block (float32)
+    """
+    tmp = np.zeros_like(block, dtype=np.float32)
+    out = np.zeros_like(block, dtype=np.float32)
+
+    # Row-wise IDCT
     for i in range(8):
         tmp[i, :] = idct(block[i, :], norm="ortho")
-    out = np.zeros_like(tmp)
+
+    # Column-wise IDCT
     for j in range(8):
         out[:, j] = idct(tmp[:, j], norm="ortho")
+
     return out
 
-def idct_blocks(blocks: np.ndarray, method: str) -> np.ndarray:
+
+# ============================================================
+# 3. Block-based IDCT (full image)
+# ============================================================
+def idct_block_based(blocks: np.ndarray) -> np.ndarray:
     """
-    blocks: (bh, bw, 8, 8)
-    return: same shape, spatial-domain blocks
+    Apply IDCT block-by-block and stitch into a full image.
+
+    Input:
+        blocks: (bh, bw, 8, 8)
+                dequantized DCT coefficients
+
+    Output:
+        image: (bh*8, bw*8)
+               reconstructed spatial image
     """
     bh, bw, _, _ = blocks.shape
-    out = np.empty_like(blocks, dtype=np.float32)
+    H = bh * 8
+    W = bw * 8
 
-    if method == "2d":
-        for i in range(bh):
-            for j in range(bw):
-                out[i, j] = idct2d(blocks[i, j])
+    image = np.zeros((H, W), dtype=np.float32)
 
-    elif method == "two1d":
-        for i in range(bh):
-            for j in range(bw):
-                out[i, j] = idct_two_1d(blocks[i, j])
+    for by in range(bh):
+        for bx in range(bw):
+            block = blocks[by, bx]
+            image[
+                by * 8 : (by + 1) * 8,
+                bx * 8 : (bx + 1) * 8
+            ] = idct2d(block)
 
-    elif method == "blocked":
-        # baseline "blocked pipeline": still per-block, but separated as a pipeline method
-        # (you can later optimize this path for speed and compare)
-        for i in range(bh):
-            for j in range(bw):
-                out[i, j] = idct2d(blocks[i, j])
-
-    else:
-        raise ValueError("Unknown IDCT method. Use: 2d / two1d / blocked")
-
-    return out
+    return image
