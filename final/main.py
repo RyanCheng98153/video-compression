@@ -78,6 +78,17 @@ def decode_full_image(args, jpeg_bytes: bytes):
         raise ValueError("Unknown IDCT method")
 
     # ------------------------------------------------------------
+    # 3.5 LEVEL SHIFT (CRITICAL FIX)
+    # ------------------------------------------------------------
+    Y  = Y  + 128.0
+    Cb = Cb + 128.0
+    Cr = Cr + 128.0
+
+    Y  = np.clip(Y,  0, 255)
+    Cb = np.clip(Cb, 0, 255)
+    Cr = np.clip(Cr, 0, 255)
+        
+    # ------------------------------------------------------------
     # 4. YCbCr → RGB
     # ------------------------------------------------------------
     if args.ycbcr == "formula":
