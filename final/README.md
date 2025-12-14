@@ -12,6 +12,8 @@ It allows you to perform ablation studies on:
 
 and evaluate their impact using PSNR, SSIM, and runtime statistics.
 
+The detailed introduction is in [./doc/intro.md](./doc/intro.md)
+
 ## Installation (uv or pip)
 ### Using [uv](https://github.com/astral-sh/uv) (recommended)
 ```bash
