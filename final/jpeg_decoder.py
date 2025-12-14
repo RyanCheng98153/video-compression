@@ -364,20 +364,24 @@ class JPEGParser:
 # Block decode
 # ---------------------------
 def decode_one_block(
-    br: EntropyBitReader,
-    ht_dc: HuffmanTable,
-    ht_ac: HuffmanTable,
-    prev_dc: int,
-    zigzag_on: bool
-) -> Tuple[np.ndarray, int]:
+    br,
+    ht_dc,
+    ht_ac,
+    prev_dc,
+    zigzag_on
+):
     coeff = np.zeros((8, 8), dtype=np.int16)
 
-    # DC
-    s = ht_dc.decode(br)
-    v = br.get_bits(s)
-    diff = receive_extend(v, s)
-    dc = prev_dc + diff
-    prev_dc = dc
+    # ---- DC ----
+    try:
+        s = ht_dc.decode(br)
+        v = br.get_bits(s)
+        diff = receive_extend(v, s)
+        dc = prev_dc + diff
+        prev_dc = dc
+    except (EOFError, RuntimeError):
+        # No more data → DC = previous DC
+        dc = prev_dc
 
     if zigzag_on:
         r, c = ZIGZAG_POS[0]
@@ -385,12 +389,18 @@ def decode_one_block(
     else:
         coeff[0, 0] = dc
 
-    # AC
+    # ---- AC ----
     k = 1
     while k < 64:
-        rs = ht_ac.decode(br)
+        try:
+            rs = ht_ac.decode(br)
+        except (EOFError, RuntimeError):
+            # No more AC data → treat as EOB
+            break
+
         if rs == 0x00:  # EOB
             break
+
         if rs == 0xF0:  # ZRL
             run, size = 16, 0
         else:
@@ -401,11 +411,14 @@ def decode_one_block(
         if k >= 64:
             break
 
-        if size > 0:
-            v = br.get_bits(size)
-            ac = receive_extend(v, size)
-        else:
-            ac = 0
+        try:
+            if size > 0:
+                v = br.get_bits(size)
+                ac = receive_extend(v, size)
+            else:
+                ac = 0
+        except (EOFError, RuntimeError):
+            break
 
         if zigzag_on:
             r, c = ZIGZAG_POS[k]
@@ -461,6 +474,17 @@ def decode_baseline_huffman(jpeg_bytes: bytes, zigzag_on: bool = True):
         br.pending_rst = None
         br.reset_bits()
 
+    meta = {
+        "width": W,
+        "height": H,
+        "qtables": jp.qtables,
+        "components": jp.components,
+        "sos_specs": jp.sos_specs,
+        "restart_interval": jp.restart_interval,
+    }
+    
+    print(meta)
+    
     for by in range(bh):
         for bx in range(bw):
 
@@ -504,15 +528,6 @@ def decode_baseline_huffman(jpeg_bytes: bytes, zigzag_on: bool = True):
                     raise
 
             mcu_count += 1
-
-    meta = {
-        "width": W,
-        "height": H,
-        "qtables": jp.qtables,
-        "components": jp.components,
-        "sos_specs": jp.sos_specs,
-        "restart_interval": jp.restart_interval,
-    }
 
     cid_Y, cid_Cb, cid_Cr = [s.cid for s in comps]
     return blocks[cid_Y], blocks[cid_Cb], blocks[cid_Cr], meta
