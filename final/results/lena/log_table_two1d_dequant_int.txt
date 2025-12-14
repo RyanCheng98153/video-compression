@@ -1,0 +1,11 @@
+==== Experiment Result ====
+YCbCr        : table
+IDCT         : two1d
+Dequant      : int
+Run times    : 1.450604,1.440178,1.450515,1.445242,1.447146,1.446413,1.446940,1.448731,1.446341,1.444678
+Time mean    : 1.446679
+Time std     : 0.002883
+Time total   : 14.466826
+PSNR         : 37.54
+SSIM         : 0.9381
+Output image : results/lena/result_images/table_two1d_int.png

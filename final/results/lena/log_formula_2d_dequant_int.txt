@@ -1,0 +1,11 @@
+==== Experiment Result ====
+YCbCr        : formula
+IDCT         : 2d
+Dequant      : int
+Run times    : 0.625029,0.622777,0.621891,0.620561,0.620726,0.620603,0.621792,0.620949,0.621470,0.619616
+Time mean    : 0.621541
+Time std     : 0.001430
+Time total   : 6.215450
+PSNR         : 38.15
+SSIM         : 0.9404
+Output image : results/lena/result_images/formula_2d_int.png

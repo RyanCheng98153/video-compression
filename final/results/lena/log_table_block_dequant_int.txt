@@ -1,0 +1,11 @@
+==== Experiment Result ====
+YCbCr        : table
+IDCT         : block
+Dequant      : int
+Run times    : 0.613954,0.612182,0.610874,0.610156,0.612699,0.610720,0.612208,0.610971,0.609823,0.611585
+Time mean    : 0.611517
+Time std     : 0.001197
+Time total   : 6.115205
+PSNR         : 37.54
+SSIM         : 0.9381
+Output image : results/lena/result_images/table_block_int.png
