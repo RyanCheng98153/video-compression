@@ -1,15 +1,14 @@
 # metrics.py
 import time
-import numpy as np
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 
 class Timer:
     def __enter__(self):
-        self.start = time.perf_counter()
+        self.start = time.time()
         return self
 
     def __exit__(self, *args):
-        self.elapsed = time.perf_counter() - self.start
+        self.elapsed = time.time() - self.start
 
 def compute_metrics(gt, pred):
     psnr = peak_signal_noise_ratio(gt, pred, data_range=255)

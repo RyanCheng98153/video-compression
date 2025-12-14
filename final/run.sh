@@ -1,26 +1,32 @@
 #!/bin/bash
 
-IMAGES=("lena")
+IMAGES=("lena")          # extend to ("lena" "tiger" "pizza")
 IMG_DIR=images
 OUT=results
 
 mkdir -p ${OUT}
 
-echo "Running JPEG Decoder Ablation Study (Multi-image)"
-echo "==============================================="
+echo "Running JPEG Decoder Ablation Study (Multi-image, 10 runs)"
+echo "========================================================="
 
-# 全部圖片的總 CSV
-echo "Image,YCbCr,IDCT,QTable,Time,PSNR,SSIM" > ${OUT}/results_all.csv
+# Global CSV header
+echo "Image,YCbCr,IDCT,QTable,\
+run_1,run_2,run_3,run_4,run_5,run_6,run_7,run_8,run_9,run_10,\
+time_mean,time_std,time_total,PSNR,SSIM" \
+> ${OUT}/results_all.csv
+
 
 for IMG in "${IMAGES[@]}"
 do
   PNG=${IMG_DIR}/${IMG}.png
   JPG=${IMG_DIR}/${IMG}.jpg
   IMG_OUT=${OUT}/${IMG}
+  IMG_IMG_OUT=${IMG_OUT}/result_images
 
   mkdir -p ${IMG_OUT}
+  mkdir -p ${IMG_IMG_OUT}
 
-  echo "==============================================="
+  echo "========================================================="
   echo "Processing image: ${IMG}"
   echo "PNG: ${PNG}"
   echo "JPG: ${JPG}"
@@ -28,8 +34,12 @@ do
   # PNG -> JPG
   python png_to_jpg.py --png ${PNG} --jpg ${JPG}
 
-  # 每張圖自己的 CSV
-  echo "YCbCr,IDCT,QTable,Time,PSNR,SSIM" > ${IMG_OUT}/results.csv
+  # Per-image CSV header
+  echo "YCbCr,IDCT,QTable,\
+run_1,run_2,run_3,run_4,run_5,run_6,run_7,run_8,run_9,run_10,\
+time_mean,time_std,time_total,PSNR,SSIM" \
+  > ${IMG_OUT}/results.csv
+
 
   for YCBCR in formula table
   do
@@ -37,7 +47,7 @@ do
     do
       for Q in 1 2
       do
-        echo "----------------------------------"
+        echo "---------------------------------------------------------"
         echo "Image=${IMG}, YCbCr=${YCBCR}, IDCT=${IDCT}, QTable=${Q}"
 
         LOG=${IMG_OUT}/log_${YCBCR}_${IDCT}_Q${Q}.txt
@@ -48,25 +58,34 @@ do
           --ycbcr ${YCBCR} \
           --idct ${IDCT} \
           --qtable ${Q} \
+          --out_img_dir ${IMG_IMG_OUT} \
           | tee ${LOG}
 
-        # Extract metrics
-        TIME=$(grep "Time" ${LOG} | awk '{print $3}')
+        # -------------------------
+        # Extract values from log
+        # -------------------------
+        RUNS=$(grep "Run times" ${LOG} | cut -d':' -f2 | tr -d ' ')
+        TIME_MEAN=$(grep "Time mean" ${LOG} | awk '{print $4}')
+        TIME_STD=$(grep "Time std" ${LOG} | awk '{print $4}')
+        TIME_TOTAL=$(grep "Time total" ${LOG} | awk '{print $4}')
         PSNR=$(grep "PSNR" ${LOG} | awk '{print $3}')
         SSIM=$(grep "SSIM" ${LOG} | awk '{print $3}')
 
-        # 寫入單張圖 CSV
-        echo "${YCBCR},${IDCT},${Q},${TIME},${PSNR},${SSIM}" >> ${IMG_OUT}/results.csv
+        # Per-image CSV
+        echo "${YCBCR},${IDCT},${Q},${RUNS},${TIME_MEAN},${TIME_STD},${TIME_TOTAL},${PSNR},${SSIM}" \
+          >> ${IMG_OUT}/results.csv
 
-        # 寫入總表 CSV
-        echo "${IMG},${YCBCR},${IDCT},${Q},${TIME},${PSNR},${SSIM}" >> ${OUT}/results_all.csv
+        # Global CSV
+        echo "${IMG},${YCBCR},${IDCT},${Q},${RUNS},${TIME_MEAN},${TIME_STD},${TIME_TOTAL},${PSNR},${SSIM}" \
+          >> ${OUT}/results_all.csv
 
       done
     done
   done
 done
 
-echo "==============================================="
+echo "========================================================="
 echo "All experiments completed."
-echo "Per-image results: ${OUT}/<image>/results.csv"
-echo "Overall results  : ${OUT}/results_all.csv"
+echo "Per-image results : ${OUT}/<image>/results.csv"
+echo "Overall results   : ${OUT}/results_all.csv"
+echo "Images saved in   : ${OUT}/<image>/result_images/"
