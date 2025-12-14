@@ -1,48 +1,91 @@
 #!/bin/bash
 
-PNG=images/lena.png
-JPG=images/lena.jpg
+IMAGES=("lena")          # extend to ("lena" "tiger" "pizza")
+IMG_DIR=images
 OUT=results
+
 mkdir -p ${OUT}
 
-python png_to_jpg.py --png ${PNG} --jpg ${JPG}
+echo "Running TRUE JPEG Decoder Ablation Study (Multi-image, 10 runs)"
+echo "================================================================"
 
-echo "Running JPEG Decoder Ablation Study..."
-echo "PNG: ${PNG}"
-echo "JPG: ${JPG}"
-echo "=============================="
+# Global CSV header (NO QTable, NO ZigZag)
+echo "Image,YCbCr,IDCT,Dequant,\
+run_1,run_2,run_3,run_4,run_5,run_6,run_7,run_8,run_9,run_10,\
+time_mean,time_std,time_total,PSNR,SSIM" \
+> ${OUT}/results_all.csv
 
-# CSV Header
-echo "YCbCr,IDCT,QTable,Time,PSNR,SSIM" > ${OUT}/results.csv
 
-for YCBCR in formula table
+for IMG in "${IMAGES[@]}"
 do
-  for IDCT in 2d two1d
+  PNG=${IMG_DIR}/${IMG}.png
+  JPG=${IMG_DIR}/${IMG}.jpg
+  IMG_OUT=${OUT}/${IMG}
+  IMG_IMG_OUT=${IMG_OUT}/result_images
+
+  mkdir -p ${IMG_OUT}
+  mkdir -p ${IMG_IMG_OUT}
+
+  echo "================================================================"
+  echo "Processing image: ${IMG}"
+  echo "PNG: ${PNG}"
+  echo "JPG: ${JPG}"
+
+  # PNG -> JPG (baseline JPEG, 4:4:4)
+  python png_to_jpg.py --png ${PNG} --jpg ${JPG}
+
+  # Per-image CSV header
+  echo "YCbCr,IDCT,Dequant,\
+run_1,run_2,run_3,run_4,run_5,run_6,run_7,run_8,run_9,run_10,\
+time_mean,time_std,time_total,PSNR,SSIM" \
+  > ${IMG_OUT}/results.csv
+
+
+  for YCBCR in formula table
   do
-    for Q in 1 2
+    for IDCT in 2d two1d block
     do
-      echo "----------------------------------"
-      echo "YCbCr=${YCBCR}, IDCT=${IDCT}, QTable=${Q}"
+      for DQ in float int
+      do
+        echo "----------------------------------------------------------------"
+        echo "Image=${IMG}, YCbCr=${YCBCR}, IDCT=${IDCT}, Dequant=${DQ}"
 
-      python main.py \
-        --png ${PNG} \
-        --jpg ${JPG} \
-        --ycbcr ${YCBCR} \
-        --idct ${IDCT} \
-        --qtable ${Q} \
-        | tee ${OUT}/log_${YCBCR}_${IDCT}_Q${Q}.txt
+        LOG=${IMG_OUT}/log_${YCBCR}_${IDCT}_dequant_${DQ}.txt
 
-      # Extract metrics to CSV
-      TIME=$(grep "Time" ${OUT}/log_${YCBCR}_${IDCT}_Q${Q}.txt | awk '{print $3}')
-      PSNR=$(grep "PSNR" ${OUT}/log_${YCBCR}_${IDCT}_Q${Q}.txt | awk '{print $3}')
-      SSIM=$(grep "SSIM" ${OUT}/log_${YCBCR}_${IDCT}_Q${Q}.txt | awk '{print $3}')
+        python main.py \
+          --png ${PNG} \
+          --jpg ${JPG} \
+          --ycbcr ${YCBCR} \
+          --idct ${IDCT} \
+          --dequant ${DQ} \
+          --out_img_dir ${IMG_IMG_OUT} \
+          | tee ${LOG}
 
-      echo "${YCBCR},${IDCT},${Q},${TIME},${PSNR},${SSIM}" >> ${OUT}/results.csv
+        # -------------------------
+        # Extract metrics from log
+        # -------------------------
+        RUNS=$(grep "Run times" ${LOG} | cut -d':' -f2 | tr -d ' ')
+        TIME_MEAN=$(grep "Time mean" ${LOG} | awk '{print $4}')
+        TIME_STD=$(grep "Time std" ${LOG} | awk '{print $4}')
+        TIME_TOTAL=$(grep "Time total" ${LOG} | awk '{print $4}')
+        PSNR=$(grep "PSNR" ${LOG} | awk '{print $3}')
+        SSIM=$(grep "SSIM" ${LOG} | awk '{print $3}')
 
+        # Per-image CSV
+        echo "${YCBCR},${IDCT},${DQ},${RUNS},${TIME_MEAN},${TIME_STD},${TIME_TOTAL},${PSNR},${SSIM}" \
+          >> ${IMG_OUT}/results.csv
+
+        # Global CSV
+        echo "${IMG},${YCBCR},${IDCT},${DQ},${RUNS},${TIME_MEAN},${TIME_STD},${TIME_TOTAL},${PSNR},${SSIM}" \
+          >> ${OUT}/results_all.csv
+
+      done
     done
   done
 done
 
-echo "=============================="
+echo "================================================================"
 echo "All experiments completed."
-echo "Results saved to ${OUT}/results.csv"
+echo "Per-image results : ${OUT}/<image>/results.csv"
+echo "Overall results   : ${OUT}/results_all.csv"
+echo "Images saved in   : ${OUT}/<image>/result_images/"

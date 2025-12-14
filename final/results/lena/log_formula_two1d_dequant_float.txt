@@ -1,0 +1,11 @@
+==== Experiment Result ====
+YCbCr        : formula
+IDCT         : two1d
+Dequant      : float
+Run times    : 1.382556,1.384679,1.374938,1.378357,1.381255,1.391900,1.378890,1.384542,1.392596,1.382729
+Time mean    : 1.383244
+Time std     : 0.005317
+Time total   : 13.832480
+PSNR         : 38.15
+SSIM         : 0.9404
+Output image : results/lena/result_images/formula_two1d_float.png

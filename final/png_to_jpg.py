@@ -5,7 +5,10 @@ import os
 
 def png_to_jpg(png_path, jpg_path, quality=95):
     img = Image.open(png_path).convert("RGB")
-    img.save(jpg_path, "JPEG", quality=quality, subsampling=0)
+    # img.save(jpg_path, "JPEG", quality=quality, subsampling=0)
+    img.save(jpg_path, "JPEG", quality=quality, subsampling=0, progressive=False)
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
