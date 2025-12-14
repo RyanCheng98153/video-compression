@@ -419,16 +419,6 @@ def decode_one_block(
 
 
 def decode_baseline_huffman(jpeg_bytes: bytes, zigzag_on: bool = True):
-    """
-    Baseline JPEG (SOF0) Huffman entropy decode into quantized 8x8 DCT coeff blocks.
-    Assumptions for your course project:
-      - single scan with 3 components (YCbCr interleaved)
-      - 4:4:4 (h=v=1 for all components) -> encode with subsampling=0
-    Supports:
-      - byte stuffing FF00
-      - restart markers FFD0..FFD7 (even if DRI=0)
-      - DRI parsing (restart_interval), but we primarily react to actual markers
-    """
     jp = JPEGParser(jpeg_bytes)
     jp.parse()
 
@@ -440,7 +430,9 @@ def decode_baseline_huffman(jpeg_bytes: bytes, zigzag_on: bool = True):
     for s in comps:
         c = jp.components[s.cid]
         if not (c.h == 1 and c.v == 1):
-            raise NotImplementedError("Subsampling not supported; encode JPG with subsampling=0 (4:4:4).")
+            raise NotImplementedError(
+                "Subsampling not supported; encode JPG with subsampling=0 (4:4:4)."
+            )
 
     H, W = jp.height, jp.width
     bw = (W + 7) // 8
@@ -451,43 +443,80 @@ def decode_baseline_huffman(jpeg_bytes: bytes, zigzag_on: bool = True):
 
     br = EntropyBitReader(jp.scan_data)
 
+    import os
+    DEBUG = os.environ.get("JPEG_DEBUG", "0") == "1"
+
     def reset_on_rst():
         # reset DC predictors for all components in scan
         for cid in prev_dc:
             prev_dc[cid] = 0
+        # clear pending and flush bit buffer
         br.pending_rst = None
         br.reset_bits()
 
-    # Decode MCU-by-MCU (here: 1 Y, 1 Cb, 1 Cr per MCU for 4:4:4)
+    # Total MCUs in 4:4:4 case = bh*bw, each MCU has 3 blocks (Y,Cb,Cr)
     for by in range(bh):
         for bx in range(bw):
 
-            # If an RST marker is pending before starting MCU, reset.
+            # If we arrived with a pending restart, reset cleanly.
             if br.pending_rst is not None:
+                if DEBUG:
+                    print(f"[RST] before MCU ({by},{bx}) marker=0x{br.pending_rst:02X}")
                 reset_on_rst()
 
+            # Decode blocks in scan order (Y,Cb,Cr) for this MCU
             for s in comps:
-                # If an RST marker appears between blocks, reset and restart this MCU cleanly.
-                if br.pending_rst is not None:
-                    reset_on_rst()
-                    # restart this MCU from scratch: clear what we wrote for this MCU
-                    for ss in comps:
-                        blocks[ss.cid][by, bx].fill(0)
-                    # restart the per-component loop
-                    break
-
                 htD = jp.ht_dc[s.td]
                 htA = jp.ht_ac[s.ta]
-                coeff8, new_prev = decode_one_block(br, htD, htA, prev_dc[s.cid], zigzag_on)
-                prev_dc[s.cid] = new_prev
-                blocks[s.cid][by, bx] = coeff8
-            else:
-                # finished this MCU normally
-                continue
 
-            # If we broke because of RST mid-MCU, redo MCU at same (by,bx)
-            # The simplest: decrement bx and let loop increment back.
-            bx -= 1
+                while True:
+                    try:
+                        coeff8, new_prev = decode_one_block(
+                            br, htD, htA, prev_dc[s.cid], zigzag_on
+                        )
+                        prev_dc[s.cid] = new_prev
+                        blocks[s.cid][by, bx] = coeff8
+                        break  # success
+
+                    except RuntimeError as e:
+                        # This is how EntropyBitReader signals an RST marker boundary.
+                        if "RST pending" in str(e) and br.pending_rst is not None:
+                            if DEBUG:
+                                print(
+                                    f"[RST] during MCU ({by},{bx}) cid={s.cid} "
+                                    f"marker=0x{br.pending_rst:02X} -> reset & retry block"
+                                )
+                            reset_on_rst()
+                            # retry SAME block after reset
+                            continue
+                        raise
+
+                    except EOFError:
+                        # End of scan unexpectedly early:
+                        # Fill the remaining blocks with zeros and return what we have.
+                        if DEBUG:
+                            print(f"[EOF] scan ended early at MCU ({by},{bx}) cid={s.cid}")
+                        meta = {
+                            "width": W,
+                            "height": H,
+                            "qtables": jp.qtables,
+                            "components": jp.components,
+                            "sos_specs": jp.sos_specs,
+                            "restart_interval": jp.restart_interval,
+                        }
+                        cid_Y, cid_Cb, cid_Cr = [x.cid for x in comps]
+                        return blocks[cid_Y], blocks[cid_Cb], blocks[cid_Cr], meta
+
+                    except ValueError as e:
+                        # Huffman decode failed: print deep debug then raise.
+                        if DEBUG:
+                            print(f"[FAIL] Huffman at MCU ({by},{bx}) cid={s.cid}")
+                            print(f"  br.pos={br.pos} bit_cnt={br.bit_cnt} pending_rst={br.pending_rst}")
+                            # dump a few upcoming bytes for inspection
+                            start = max(0, br.pos - 8)
+                            end = min(len(br.data), br.pos + 16)
+                            print("  scan bytes around pos:", br.data[start:end].hex())
+                        raise
 
     meta = {
         "width": W,
