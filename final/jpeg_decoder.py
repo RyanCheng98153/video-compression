@@ -391,7 +391,7 @@ def decode_one_block(
         if decode_one_block._dc_print_count < 20:
             print(f"[DEBUG] DC block {decode_one_block._dc_print_count}: {dc}")
             decode_one_block._dc_print_count += 1
-    except (EOFError, RuntimeError):
+    except EOFError:
         # No more data → DC = previous DC
         dc = prev_dc
 
@@ -406,7 +406,7 @@ def decode_one_block(
     while k < 64:
         try:
             rs = ht_ac.decode(br)
-        except (EOFError, RuntimeError):
+        except EOFError:
             # No more AC data → treat as EOB
             break
 
@@ -429,7 +429,7 @@ def decode_one_block(
                 ac = receive_extend(v, size)
             else:
                 ac = 0
-        except (EOFError, RuntimeError):
+        except EOFError:
             break
 
         if zigzag_on:
@@ -524,20 +524,29 @@ def decode_baseline_huffman(jpeg_bytes: bytes, zigzag_on: bool = True):
                     coeff8, prev = decode_one_block(br, htD, htA, prev_dc[s.cid], zigzag_on)
                     prev_dc[s.cid] = prev
                     blocks[s.cid][by, bx] = coeff8
-            except (RuntimeError, EOFError, ValueError) as e:
-                # If we desync due to a marker boundary, try one recovery:
-                # force-fill to detect RST and reset, then retry this MCU once.
-                br._fill()
-                if br.pending_rst is not None:
-                    reset_predictors_and_align()
-                    for s in comps:
-                        htD = jp.ht_dc[s.td]
-                        htA = jp.ht_ac[s.ta]
-                        coeff8, prev = decode_one_block(br, htD, htA, prev_dc[s.cid], zigzag_on)
-                        prev_dc[s.cid] = prev
-                        blocks[s.cid][by, bx] = coeff8
-                else:
-                    raise
+            # Decode MCU (Y, Cb, Cr) in scan order
+            try:
+                for s in comps:
+                    # if an RST appears (should be between MCUs), reset state and restart MCU cleanly
+                    if br.pending_rst is not None:
+                        reset_predictors_and_align()
+                        raise RuntimeError("RST boundary")
+
+                    htD = jp.ht_dc[s.td]
+                    htA = jp.ht_ac[s.ta]
+                    coeff8, prev = decode_one_block(br, htD, htA, prev_dc[s.cid], zigzag_on)
+                    prev_dc[s.cid] = prev
+                    blocks[s.cid][by, bx] = coeff8
+
+            except RuntimeError:
+                # RST boundary: predictors reset already, redo THIS MCU without advancing
+                bx -= 1  # we'll ++ at end of loop, so neutralize
+                continue
+
+            except EOFError:
+                # End of scan: leave remaining blocks as zeros and finish decoding
+                cid_Y, cid_Cb, cid_Cr = [s.cid for s in comps]
+                return blocks[cid_Y], blocks[cid_Cb], blocks[cid_Cr], meta
 
             mcu_count += 1
 
