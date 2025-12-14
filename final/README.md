@@ -1,6 +1,6 @@
 # Final: Jpeg Decoder Implementation & Performance Analysis
 **Student ID:** [314554025]  
-**Name:** [鄭睿宏]  
+**Name:** [鄭睿宏 / 郭彥頡 / 孫承瑞 / 戚維凌]  
 **Project Link:** [https://github.com/RyanCheng98153/video-compression/tree/main/final](https://github.com/RyanCheng98153/video-compression/tree/main/final)
 
 ## Introduction
