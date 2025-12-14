@@ -19,47 +19,99 @@ ZIGZAG_POS = [
 def _read_u16(be_bytes: bytes, i: int) -> Tuple[int, int]:
     return (be_bytes[i] << 8) | be_bytes[i+1], i + 2
 
+
+# ---------------------------
+# Restart-marker support
+# ---------------------------
+class RestartMarker(Exception):
+    """Raised when BitReader encounters an RST marker (FFD0..FFD7)."""
+    def __init__(self, rst: int):
+        super().__init__(f"Restart marker encountered: 0xFF{rst:02X}")
+        self.rst = rst
+
+
 class BitReader:
     """
-    Reads bits from entropy-coded segment. Handles byte-stuffing (0xFF 0x00).
-    Stops before markers (0xFF followed by non-0x00).
+    Reads bits from entropy-coded segment.
+    Supports:
+      - byte stuffing (0xFF 0x00 -> literal 0xFF)
+      - restart markers (0xFF D0..D7)
+      - EOI (0xFF D9)
     """
     def __init__(self, data: bytes):
         self.data = data
         self.pos = 0
         self.bit_buf = 0
         self.bit_cnt = 0
+        self.pending_rst: Optional[int] = None
         self.eoi = False
 
+    def reset_bits(self):
+        """Flush bit buffer (required by JPEG on RST)."""
+        self.bit_buf = 0
+        self.bit_cnt = 0
+
+    def _read_byte(self) -> Optional[int]:
+        if self.pos >= len(self.data):
+            return None
+        b = self.data[self.pos]
+        self.pos += 1
+        return b
+
     def _fill(self):
-        while self.bit_cnt <= 16 and self.pos < len(self.data):
-            b = self.data[self.pos]
-            self.pos += 1
+        """
+        Fill bit buffer. If we hit an RST marker, set pending_rst and return
+        (do NOT treat it as end-of-stream).
+        """
+        while self.bit_cnt <= 16 and not self.eoi:
+            b = self._read_byte()
+            if b is None:
+                self.eoi = True
+                return
+
             if b == 0xFF:
-                if self.pos >= len(self.data):
+                nxt = self._read_byte()
+                if nxt is None:
                     self.eoi = True
                     return
-                nxt = self.data[self.pos]
-                # stuffed 0x00 means literal 0xFF
+
                 if nxt == 0x00:
-                    self.pos += 1
+                    # byte-stuffed 0xFF
                     b = 0xFF
-                else:
-                    # marker encountered; step back so caller can handle
-                    self.pos -= 1  # keep at 0xFF
+                elif 0xD0 <= nxt <= 0xD7:
+                    # Restart marker encountered
+                    self.pending_rst = nxt
+                    self.reset_bits()
+                    return
+                elif nxt == 0xD9:
+                    # EOI
                     self.eoi = True
                     return
+                else:
+                    # Other marker: for our baseline decoder we stop.
+                    # (Progressive/other segments not supported.)
+                    self.eoi = True
+                    return
+
             self.bit_buf = (self.bit_buf << 8) | b
             self.bit_cnt += 8
 
     def get_bits(self, n: int) -> int:
         if n == 0:
             return 0
+
+        # If a restart marker is pending, signal to caller
+        if self.pending_rst is not None:
+            raise RestartMarker(self.pending_rst)
+
         while self.bit_cnt < n and not self.eoi:
             self._fill()
+            if self.pending_rst is not None:
+                raise RestartMarker(self.pending_rst)
+
         if self.bit_cnt < n:
-            # stream ended unexpectedly
             raise EOFError("Not enough bits in entropy stream")
+
         shift = self.bit_cnt - n
         val = (self.bit_buf >> shift) & ((1 << n) - 1)
         self.bit_cnt -= n
@@ -68,6 +120,7 @@ class BitReader:
 
     def get_bit(self) -> int:
         return self.get_bits(1)
+
 
 @dataclass
 class HuffmanTable:
@@ -83,6 +136,7 @@ class HuffmanTable:
             if key in self.codes:
                 return self.codes[key]
         raise ValueError("Huffman decode failed")
+
 
 def build_huffman_table(lengths: List[int], symbols: List[int]) -> HuffmanTable:
     """
@@ -105,6 +159,7 @@ def build_huffman_table(lengths: List[int], symbols: List[int]) -> HuffmanTable:
         code <<= 1
     return HuffmanTable(codes=codes, max_len=max_len if max_len else 16)
 
+
 def receive_extend(v: int, t: int) -> int:
     """
     Convert additional bits (v) with category t into signed value.
@@ -117,6 +172,7 @@ def receive_extend(v: int, t: int) -> int:
         return v - ((1 << t) - 1)
     return v
 
+
 @dataclass
 class Component:
     cid: int
@@ -124,11 +180,13 @@ class Component:
     v: int
     tq: int  # quant table id
 
+
 @dataclass
 class SOSComponentSpec:
     cid: int
     td: int  # DC table id
     ta: int  # AC table id
+
 
 class JPEGParser:
     def __init__(self, jpeg_bytes: bytes):
@@ -170,18 +228,17 @@ class JPEGParser:
                 break
             if m == 0xD9:  # EOI
                 break
-            if m in (0xD0,0xD1,0xD2,0xD3,0xD4,0xD5,0xD6,0xD7):  # RSTn
+            if m in (0xD0,0xD1,0xD2,0xD3,0xD4,0xD5,0xD6,0xD7):  # RSTn markers as standalone (rare here)
                 continue
             if m == 0xDA:  # SOS
                 seglen, i = _read_u16(b, i)
                 seg = b[i:i+seglen-2]
                 i += seglen - 2
                 self._parse_sos(seg)
-                # entropy data until EOI (or next marker)
+                # entropy data begins right after SOS header
                 self.entropy_data = b[i:]
                 break
 
-            # segments with length
             seglen, i = _read_u16(b, i)
             seg = b[i:i+seglen-2]
             i += seglen - 2
@@ -190,7 +247,7 @@ class JPEGParser:
                 self._parse_dqt(seg)
             elif m == 0xC4:  # DHT
                 self._parse_dht(seg)
-            elif m == 0xC0:  # SOF0 (baseline)
+            elif m == 0xC0:  # SOF0 baseline
                 self._parse_sof0(seg)
             else:
                 # ignore APPx, COM, etc.
@@ -210,7 +267,7 @@ class JPEGParser:
                 raise NotImplementedError("16-bit quant table not supported")
             qt = np.frombuffer(seg[i:i+64], dtype=np.uint8).astype(np.float32)
             i += 64
-            # quant table is in zigzag order in file; convert to 8x8 natural order
+            # JPEG stores Q-table in zigzag order -> convert to natural 8x8
             q8 = np.zeros((8,8), dtype=np.float32)
             for k,(r,c) in enumerate(ZIGZAG_POS):
                 q8[r,c] = qt[k]
@@ -260,6 +317,7 @@ class JPEGParser:
         self.sos_specs = specs
         # ignore Ss, Se, Ah/Al (baseline should be 0,63,0)
 
+
 def decode_one_block(br: BitReader, ht_dc: HuffmanTable, ht_ac: HuffmanTable,
                      prev_dc: int, zigzag_on: bool) -> Tuple[np.ndarray, int]:
     """
@@ -295,6 +353,7 @@ def decode_one_block(br: BitReader, ht_dc: HuffmanTable, ht_ac: HuffmanTable,
         k += run
         if k >= 64:
             break
+
         if size > 0:
             v = br.get_bits(size)
             ac = receive_extend(v, size)
@@ -305,7 +364,6 @@ def decode_one_block(br: BitReader, ht_dc: HuffmanTable, ht_ac: HuffmanTable,
             r,c = ZIGZAG_POS[k]
             coeff[r,c] = ac
         else:
-            # "zigzag off": fill in raster order index k
             rr = k // 8
             cc = k % 8
             coeff[rr,cc] = ac
@@ -314,62 +372,84 @@ def decode_one_block(br: BitReader, ht_dc: HuffmanTable, ht_ac: HuffmanTable,
 
     return coeff.astype(np.float32), prev_dc
 
+
 def decode_baseline_huffman(jpeg_bytes: bytes,
                            zigzag_on: bool = True) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Dict]:
     """
-    Decode baseline JPEG entropy stream into quantized DCT blocks, then return per-channel
-    coefficient blocks (not yet dequant/IDCT):
+    Baseline JPEG (SOF0) entropy decode using Huffman only.
+    Returns quantized DCT coefficient blocks (NOT dequant/IDCT yet):
       Y_blocks: (bh, bw, 8, 8)
-      Cb_blocks: ...
-      Cr_blocks: ...
-    Assumes 3 components present in one scan.
-    For course-project simplicity: expects no subsampling (all H=V=1).
+      Cb_blocks: (bh, bw, 8, 8)
+      Cr_blocks: (bh, bw, 8, 8)
+    Course-project simplification:
+      - expects 3 components in one scan
+      - expects 4:4:4 (no subsampling; h=v=1 for all components)
+    Restart markers (RST0..RST7) are supported: reset DC predictors and bit alignment.
     """
     jp = JPEGParser(jpeg_bytes)
     jp.parse()
 
-    # Expect 3 components: typical ids 1(Y),2(Cb),3(Cr)
-    # If your files differ, we still handle by CID mapping in SOS order.
     comps_in_scan = jp.sos_specs
     if len(comps_in_scan) != 3:
         raise NotImplementedError("This decoder expects 3-component JPEG (YCbCr)")
 
-    # For simplicity, require 4:4:4 (h=v=1 for all)
+    # Require 4:4:4
     for spec in comps_in_scan:
         c = jp.components[spec.cid]
         if not (c.h == 1 and c.v == 1):
             raise NotImplementedError(
-                "Subsampling not supported in this baseline decoder. "
-                "Please encode JPG with subsampling=0 (4:4:4)."
+                "Subsampling not supported. Encode JPG with subsampling=0 (4:4:4)."
             )
 
     H, W = jp.height, jp.width
     bw = (W + 7) // 8
     bh = (H + 7) // 8
 
-    # allocate blocks
     blocks = {spec.cid: np.zeros((bh, bw, 8, 8), dtype=np.float32) for spec in comps_in_scan}
     prev_dc = {spec.cid: 0 for spec in comps_in_scan}
 
-    # bit reader on entropy data; it may include EOI marker; BitReader stops at marker
     br = BitReader(jp.entropy_data)
 
-    for by in range(bh):
-        for bx in range(bw):
-            for spec in comps_in_scan:
-                htD = jp.ht_dc[spec.td]
-                htA = jp.ht_ac[spec.ta]
-                coeff8, prev = decode_one_block(br, htD, htA, prev_dc[spec.cid], zigzag_on)
-                prev_dc[spec.cid] = prev
-                blocks[spec.cid][by, bx] = coeff8
+    by = 0
+    bx = 0
+    while by < bh:
+        bx = 0
+        while bx < bw:
+
+            # ---- RST support: if marker pending before MCU decode, reset state ----
+            if br.pending_rst is not None:
+                # reset DC predictors for ALL components in scan
+                for cid in prev_dc:
+                    prev_dc[cid] = 0
+                # clear pending marker
+                br.pending_rst = None
+                # bit buffer already flushed in BitReader
+                # continue decoding next MCU
+            try:
+                for spec in comps_in_scan:
+                    htD = jp.ht_dc[spec.td]
+                    htA = jp.ht_ac[spec.ta]
+                    coeff8, prev = decode_one_block(br, htD, htA, prev_dc[spec.cid], zigzag_on)
+                    prev_dc[spec.cid] = prev
+                    blocks[spec.cid][by, bx] = coeff8
+                bx += 1
+            except RestartMarker as rm:
+                # We hit RST in between (or right before) bits.
+                # Reset predictors and continue with same MCU position.
+                for cid in prev_dc:
+                    prev_dc[cid] = 0
+                br.pending_rst = None
+                continue
+
+        by += 1
 
     meta = {
-        "width": W, "height": H,
+        "width": W,
+        "height": H,
         "qtables": jp.qtables,
         "components": jp.components,
         "sos_specs": jp.sos_specs,
     }
-    # return in SOS order as Y,Cb,Cr planes (by cid)
-    # Most JPEGs use cid 1,2,3. If not, we map by SOS order:
+
     cid_Y, cid_Cb, cid_Cr = [s.cid for s in comps_in_scan]
     return blocks[cid_Y], blocks[cid_Cb], blocks[cid_Cr], meta
