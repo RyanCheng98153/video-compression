@@ -321,14 +321,16 @@ class JPEGParser:
         """
         Extract entropy-coded scan data bytes from JPEG stream starting at 'start'
         until next marker (EOI or next segment).
-        Must respect:
-          - 0xFF00 is stuffed data byte 0xFF (NOT marker)
-          - 0xFFD0..FFD7 are restart markers inside scan (part of scan stream)
-        We return raw scan bytes including stuffed sequences and RST markers,
-        but NOT including the final marker (like EOI).
+
+        IMPORTANT:
+        - Do NOT "unstuff" here.
+        Keep 0xFF 0x00 as-is, so EntropyBitReader can handle byte-stuffing correctly.
+        - Keep restart markers (0xFF D0..D7) as-is in the scan stream.
+        - Stop when encountering a non-stuffed, non-RST marker (e.g., EOI 0xFFD9).
         """
         out = bytearray()
         i = start
+
         while i < len(b):
             x = b[i]
             if x != 0xFF:
@@ -336,28 +338,30 @@ class JPEGParser:
                 i += 1
                 continue
 
-            # x==0xFF
+            # x == 0xFF
             if i + 1 >= len(b):
                 break
             y = b[i + 1]
 
             if y == 0x00:
-                # stuffed 0xFF
+                # stuffed 0xFF: KEEP BOTH BYTES (FF 00)
                 out.append(0xFF)
+                out.append(0x00)
                 i += 2
                 continue
 
             if 0xD0 <= y <= 0xD7:
-                # restart marker in scan
+                # restart marker in scan: KEEP BOTH BYTES (FF Dn)
                 out.append(0xFF)
                 out.append(y)
                 i += 2
                 continue
 
-            # Otherwise, it's a marker that ends scan (EOI or another segment)
+            # Otherwise it's a real marker that terminates the scan (EOI or next segment)
             break
 
         return bytes(out), i
+
 
 
 # ---------------------------
