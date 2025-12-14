@@ -483,7 +483,7 @@ def decode_baseline_huffman(jpeg_bytes: bytes, zigzag_on: bool = True):
         "restart_interval": jp.restart_interval,
     }
     
-    print(meta)
+    # print(meta)
     
     for by in range(bh):
         for bx in range(bw):
