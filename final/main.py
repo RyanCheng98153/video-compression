@@ -3,75 +3,77 @@ import argparse
 import numpy as np
 from PIL import Image
 import os
+import time
 
 from jpeg_decoder import decode_baseline_huffman
-from idct import idct_blocks
+from quantization import dequantize_blocks
+from idct import idct2d, idct_two_1d, idct_block_based
 from ycbcr import ycbcr_to_rgb_formula, ycbcr_to_rgb_table
-from metrics import Timer, compute_metrics
-
-
-def from_blocks(blocks: np.ndarray) -> np.ndarray:
-    # blocks: (bh, bw, 8, 8) -> (H, W) padded
-    bh, bw, _, _ = blocks.shape
-    return blocks.transpose(0, 2, 1, 3).reshape(bh * 8, bw * 8)
-
-
-def apply_qtable_per_component(blocks: np.ndarray, q: np.ndarray) -> np.ndarray:
-    # blocks: (bh, bw, 8, 8), q: (8, 8)
-    return blocks * q.astype(np.float32)[None, None, :, :]
+from metrics import compute_metrics, Timer
 
 
 def decode_full_image(args, jpeg_bytes: bytes):
-    # 1) Parse + Huffman decode -> quantized DCT coeff blocks
+    # ------------------------------------------------------------
+    # 1. Entropy + Huffman decode (real JPEG decoder)
+    # ------------------------------------------------------------
     Yb_q, Cbb_q, Crb_q, meta = decode_baseline_huffman(
         jpeg_bytes,
-        zigzag_on=(args.zigzag == "on")
+        zigzag_on=True  # ZigZag is mandatory
     )
-    
-    # print("Y DC block (0,0):", Yb_q[0,0,0,0])
-    # print("Y DC block (0,1):", Yb_q[0,1,0,0])
-    # print("Y DC block (1,0):", Yb_q[1,0,0,0])
-    # print("Y DC block (1,1):", Yb_q[1,1,0,0])
 
     H = meta["height"]
     W = meta["width"]
     qtables = meta["qtables"]
     comps = meta["components"]
-    sos = meta["sos_specs"]  # scan order
 
-    # Map SOS order -> cid for Y/Cb/Cr returned by decoder
-    cid_Y, cid_Cb, cid_Cr = [s.cid for s in sos]
+    # Component → quant table
+    qY  = qtables[comps[1].tq]
+    qCb = qtables[comps[2].tq]
+    qCr = qtables[comps[3].tq]
 
-    # 2) Use REAL JPEG DQT tables (per component tq id)
-    qY = qtables[comps[cid_Y].tq]
-    qC = qtables[comps[cid_Cb].tq]  # Cb and Cr usually share the same table id
-    qR = qtables[comps[cid_Cr].tq]
+    # ------------------------------------------------------------
+    # 2. Dequantization (ABLATION)
+    # ------------------------------------------------------------
+    Yb  = dequantize_blocks(Yb_q,  qY,  args.dequant)
+    Cbb = dequantize_blocks(Cbb_q, qCb, args.dequant)
+    Crb = dequantize_blocks(Crb_q, qCr, args.dequant)
 
-    # 3) Dequantize with correct table
-    Yb = apply_qtable_per_component(Yb_q, qY)
-    Cbb = apply_qtable_per_component(Cbb_q, qC)
-    Crb = apply_qtable_per_component(Crb_q, qR)
+    # ------------------------------------------------------------
+    # 3. IDCT (ABLATION)
+    # ------------------------------------------------------------
+    if args.idct == "2d":
+        Y  = idct2d(Yb)
+        Cb = idct2d(Cbb)
+        Cr = idct2d(Crb)
 
-    # 4) IDCT ablation (spatial blocks) + level shift
-    Ysp = idct_blocks(Yb, args.idct) + 128.0
-    Cbsp = idct_blocks(Cbb, args.idct) + 128.0
-    Crsp = idct_blocks(Crb, args.idct) + 128.0
+    elif args.idct == "two1d":
+        Y  = idct_two_1d(Yb)
+        Cb = idct_two_1d(Cbb)
+        Cr = idct_two_1d(Crb)
 
-    # 5) Stitch blocks -> full planes, crop to (H,W)
-    Y = from_blocks(Ysp)[:H, :W]
-    Cb = from_blocks(Cbsp)[:H, :W]
-    Cr = from_blocks(Crsp)[:H, :W]
+    elif args.idct == "block":
+        Y  = idct_block_based(Yb)
+        Cb = idct_block_based(Cbb)
+        Cr = idct_block_based(Crb)
 
-    # 6) YCbCr -> RGB ablation
+    else:
+        raise ValueError("Unknown IDCT method")
+
+    # ------------------------------------------------------------
+    # 4. YCbCr → RGB (ABLATION)
+    # ------------------------------------------------------------
     if args.ycbcr == "formula":
         rgb = ycbcr_to_rgb_formula(Y, Cb, Cr)
     else:
         rgb = ycbcr_to_rgb_table(Y, Cb, Cr)
 
+    # Crop padding
+    rgb = rgb[:H, :W]
     return rgb
 
 
 def run_experiment(args):
+    # Ground truth
     gt = np.array(Image.open(args.png).convert("RGB"), dtype=np.float32)
 
     with open(args.jpg, "rb") as f:
@@ -88,28 +90,30 @@ def run_experiment(args):
 
     psnr, ssim = compute_metrics(gt, rgb)
 
-    # Save output image
+    # Save image
     os.makedirs(args.out_img_dir, exist_ok=True)
-    out_img_path = os.path.join(
+    out_path = os.path.join(
         args.out_img_dir,
-        f"{args.ycbcr}_{args.idct}_zigzag_{args.zigzag}.png"
+        f"{args.ycbcr}_{args.idct}_{args.dequant}.png"
     )
-    Image.fromarray(rgb.clip(0, 255).astype(np.uint8)).save(out_img_path)
+    Image.fromarray(rgb.astype(np.uint8)).save(out_path)
 
-    time_mean = float(np.mean(times))
-    time_std = float(np.std(times))
+    # Stats
+    time_mean = np.mean(times)
+    time_std  = np.std(times)
 
+    # Print for bash parsing
     print("==== Experiment Result ====")
     print(f"YCbCr        : {args.ycbcr}")
     print(f"IDCT         : {args.idct}")
-    print(f"ZigZag       : {args.zigzag}")
+    print(f"Dequant      : {args.dequant}")
     print(f"Run times    : {','.join(f'{t:.6f}' for t in times)}")
     print(f"Time mean    : {time_mean:.6f}")
     print(f"Time std     : {time_std:.6f}")
     print(f"Time total   : {total_timer.elapsed:.6f}")
     print(f"PSNR         : {psnr:.2f}")
     print(f"SSIM         : {ssim:.4f}")
-    print(f"Output image : {out_img_path}")
+    print(f"Output image : {out_path}")
 
 
 if __name__ == "__main__":
@@ -117,14 +121,10 @@ if __name__ == "__main__":
     parser.add_argument("--png", required=True)
     parser.add_argument("--jpg", required=True)
 
-    # Ablation 1: 2 methods
+    # Ablation dimensions
     parser.add_argument("--ycbcr", choices=["formula", "table"], required=True)
-
-    # Ablation 2: 3 methods
-    parser.add_argument("--idct", choices=["2d", "two1d", "blocked"], required=True)
-
-    # Ablation 3: ZigZag on/off
-    parser.add_argument("--zigzag", choices=["on", "off"], default="on")
+    parser.add_argument("--idct", choices=["2d", "two1d", "block"], required=True)
+    parser.add_argument("--dequant", choices=["float", "int"], required=True)
 
     parser.add_argument("--out_img_dir", required=True)
     args = parser.parse_args()

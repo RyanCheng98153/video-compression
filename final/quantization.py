@@ -1,32 +1,33 @@
 # quantization.py
 import numpy as np
 
-qtable1 = np.array([
-    [10, 7, 6, 10, 14, 24, 31, 37],
-    [7, 7, 8, 11, 16, 35, 36, 33],
-    [8, 8, 10, 14, 24, 34, 41, 34],
-    [8, 10, 13, 17, 31, 52, 48, 37],
-    [11, 13, 22, 34, 41, 65, 62, 46],
-    [14, 21, 33, 38, 49, 62, 68, 55],
-    [29, 38, 47, 52, 62, 73, 72, 61],
-    [43, 55, 57, 59, 67, 60, 62, 59]
-], dtype=np.float32)
+def dequantize_blocks(blocks_q: np.ndarray,
+                      qtable: np.ndarray,
+                      mode: str = "float") -> np.ndarray:
+    """
+    Dequantization ablation
 
-qtable2 = np.array([
-    [10, 11, 14, 28, 59, 59, 59, 59],
-    [11, 13, 16, 40, 59, 59, 59, 59],
-    [14, 16, 34, 59, 59, 59, 59, 59],
-    [28, 40, 59, 59, 59, 59, 59, 59],
-    [59, 59, 59, 59, 59, 59, 59, 59],
-    [59, 59, 59, 59, 59, 59, 59, 59],
-    [59, 59, 59, 59, 59, 59, 59, 59],
-    [59, 59, 59, 59, 59, 59, 59, 59]
-], dtype=np.float32)
+    blocks_q : (H_blocks, W_blocks, 8, 8)
+               quantized DCT coefficients (float32, integer-valued)
+    qtable   : (8, 8) quantization table parsed from JPEG bitstream
+    mode     : 'float' | 'int'
 
-def dequantize_blocks(blocks: np.ndarray, table_id: int) -> np.ndarray:
-    if table_id == 1:
-        return blocks * qtable1
-    elif table_id == 2:
-        return blocks * qtable2
+    Returns
+    -------
+    blocks : float32 dequantized coefficients
+    """
+
+    if mode == "float":
+        # Baseline: float32 multiply
+        return blocks_q * qtable[None, None, :, :]
+
+    elif mode == "int":
+        # Integer-style dequantization (hardware-like)
+        # int16 * int16 -> int32 -> float32
+        b = blocks_q.astype(np.int16)
+        q = qtable.astype(np.int16)
+        out = b * q[None, None, :, :]
+        return out.astype(np.float32)
+
     else:
-        raise ValueError("Unknown quantization table")
+        raise ValueError(f"Unknown dequant mode: {mode}")

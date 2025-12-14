@@ -9,8 +9,8 @@ mkdir -p ${OUT}
 echo "Running TRUE JPEG Decoder Ablation Study (Multi-image, 10 runs)"
 echo "================================================================"
 
-# Global CSV header (NO QTable)
-echo "Image,YCbCr,IDCT,ZigZag,\
+# Global CSV header (NO QTable, NO ZigZag)
+echo "Image,YCbCr,IDCT,Dequant,\
 run_1,run_2,run_3,run_4,run_5,run_6,run_7,run_8,run_9,run_10,\
 time_mean,time_std,time_total,PSNR,SSIM" \
 > ${OUT}/results_all.csv
@@ -35,7 +35,7 @@ do
   python png_to_jpg.py --png ${PNG} --jpg ${JPG}
 
   # Per-image CSV header
-  echo "YCbCr,IDCT,ZigZag,\
+  echo "YCbCr,IDCT,Dequant,\
 run_1,run_2,run_3,run_4,run_5,run_6,run_7,run_8,run_9,run_10,\
 time_mean,time_std,time_total,PSNR,SSIM" \
   > ${IMG_OUT}/results.csv
@@ -43,21 +43,21 @@ time_mean,time_std,time_total,PSNR,SSIM" \
 
   for YCBCR in formula table
   do
-    for IDCT in 2d two1d blocked
+    for IDCT in 2d two1d block
     do
-      for Z in on off
+      for DQ in float int
       do
         echo "----------------------------------------------------------------"
-        echo "Image=${IMG}, YCbCr=${YCBCR}, IDCT=${IDCT}, ZigZag=${Z}"
+        echo "Image=${IMG}, YCbCr=${YCBCR}, IDCT=${IDCT}, Dequant=${DQ}"
 
-        LOG=${IMG_OUT}/log_${YCBCR}_${IDCT}_zigzag_${Z}.txt
+        LOG=${IMG_OUT}/log_${YCBCR}_${IDCT}_dequant_${DQ}.txt
 
         python main.py \
           --png ${PNG} \
           --jpg ${JPG} \
           --ycbcr ${YCBCR} \
           --idct ${IDCT} \
-          --zigzag ${Z} \
+          --dequant ${DQ} \
           --out_img_dir ${IMG_IMG_OUT} \
           | tee ${LOG}
 
@@ -72,11 +72,11 @@ time_mean,time_std,time_total,PSNR,SSIM" \
         SSIM=$(grep "SSIM" ${LOG} | awk '{print $3}')
 
         # Per-image CSV
-        echo "${YCBCR},${IDCT},${Z},${RUNS},${TIME_MEAN},${TIME_STD},${TIME_TOTAL},${PSNR},${SSIM}" \
+        echo "${YCBCR},${IDCT},${DQ},${RUNS},${TIME_MEAN},${TIME_STD},${TIME_TOTAL},${PSNR},${SSIM}" \
           >> ${IMG_OUT}/results.csv
 
         # Global CSV
-        echo "${IMG},${YCBCR},${IDCT},${Z},${RUNS},${TIME_MEAN},${TIME_STD},${TIME_TOTAL},${PSNR},${SSIM}" \
+        echo "${IMG},${YCBCR},${IDCT},${DQ},${RUNS},${TIME_MEAN},${TIME_STD},${TIME_TOTAL},${PSNR},${SSIM}" \
           >> ${OUT}/results_all.csv
 
       done
